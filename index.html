@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Forge Admin — System Management Console</title>
+  <meta name="description" content="Forge Fitness Admin Dashboard — Manage trainees, monitor compliance, handle support tickets and dispatch announcements." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- LOGIN SCREEN -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="logo-text">FORGE<span class="accent-dot">.</span></span>
+        <span class="logo-sub">ADMIN CONSOLE</span>
+      </div>
+      <div class="login-form-wrap">
+        <h1 class="login-title">Sign In to Admin</h1>
+        <p class="login-desc">Access restricted to authorized personnel only.</p>
+        <form id="login-form">
+          <div class="field-group">
+            <label class="field-label">Email Address</label>
+            <input type="email" id="login-email" class="field-input" placeholder="admin@forgefitness.com" required />
+          </div>
+          <div class="field-group">
+            <label class="field-label">Password</label>
+            <input type="password" id="login-password" class="field-input" placeholder="••••••••" required />
+          </div>
+          <div id="login-error" class="login-error hidden"></div>
+          <button type="submit" class="btn-primary" id="login-btn">
+            <span id="login-btn-text">Access Dashboard</span>
+            <div id="login-spinner" class="btn-spinner hidden"></div>
+          </button>
+        </form>
+      </div>
+      <p class="login-footer">Forge Fitness · Internal Tools · v2.0</p>
+    </div>
+    <div class="login-bg-orbs">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+  </div>
+
+  <!-- ADMIN DASHBOARD -->
+  <div id="app" class="app hidden">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-text">FORGE<span class="accent-dot">.</span></span>
+        <span class="logo-badge">ADMIN</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a class="nav-item active" data-tab="overview" onclick="switchTab('overview')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>Overview</span>
+        </a>
+        <a class="nav-item" data-tab="users" onclick="switchTab('users')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Trainees</span>
+          <span class="nav-badge" id="users-badge">0</span>
+        </a>
+        <a class="nav-item" data-tab="compliance" onclick="switchTab('compliance')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span>Compliance</span>
+        </a>
+        <a class="nav-item" data-tab="monetization" onclick="switchTab('monetization')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span>Revenue</span>
+        </a>
+        <a class="nav-item" data-tab="support" onclick="switchTab('support')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Support</span>
+          <span class="nav-badge nav-badge-red" id="tickets-badge">0</span>
+        </a>
+        <a class="nav-item" data-tab="feedback" onclick="switchTab('feedback')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span>Feedback</span>
+        </a>
+        <a class="nav-item" data-tab="announce" onclick="switchTab('announce')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>
+          <span>Announce</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="admin-profile" id="admin-profile-info">
+          <div class="admin-avatar" id="admin-avatar">A</div>
+          <div class="admin-info">
+            <div class="admin-name" id="admin-name">Admin</div>
+            <div class="admin-role">System Admin</div>
+          </div>
+        </div>
+        <button class="logout-btn" onclick="handleLogout()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Sign Out
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <h2 class="page-title" id="page-title">Overview</h2>
+          <div class="live-indicator">
+            <span class="live-dot"></span>
+            <span>Live</span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="search-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="global-search" class="search-input" placeholder="Search trainees..." oninput="handleGlobalSearch(this.value)" />
+          </div>
+          <button class="refresh-btn" onclick="loadAllData()" title="Refresh data">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Panel: Overview -->
+      <section class="tab-panel active" id="panel-overview">
+        <div class="stats-grid" id="stats-grid">
+          <div class="stat-card skeleton"></div>
+          <div class="stat-card skeleton"></div>
+          <div class="stat-card skeleton"></div>
+          <div class="stat-card skeleton"></div>
+        </div>
+
+        <div class="grid-2col" style="margin-top:24px">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Trainee Goal Breakdown</h3>
+              <span class="card-badge" id="total-users-badge">0 users</span>
+            </div>
+            <div id="goal-chart" class="goal-chart-wrap"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Activity Trend (7 days)</h3>
+              <span class="card-badge accent-text">This Week</span>
+            </div>
+            <div class="trend-chart-wrap">
+              <svg id="trend-svg" width="100%" height="160" viewBox="0 0 400 160" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="trend-labels" id="trend-labels"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:24px">
+          <div class="card-header">
+            <h3 class="card-title">Recent Signups</h3>
+            <a class="card-link" onclick="switchTab('users')">View all →</a>
+          </div>
+          <div id="recent-signups" class="recent-list"></div>
+        </div>
+      </section>
+
+      <!-- Panel: Trainees -->
+      <section class="tab-panel" id="panel-users">
+        <div class="users-layout">
+          <div class="users-list-col">
+            <div class="filters-bar">
+              <select class="filter-select" id="goal-filter" onchange="applyFilters()">
+                <option value="all">All Goals</option>
+                <option value="bulk">Bulk</option>
+                <option value="cut">Fat Loss</option>
+                <option value="maintain">Maintain</option>
+              </select>
+              <select class="filter-select" id="level-filter" onchange="applyFilters()">
+                <option value="all">All Levels</option>
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+              </select>
+              <select class="filter-select" id="status-filter" onchange="applyFilters()">
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+                <option value="admin">Admin</option>
+              </select>
+              <span class="filter-count" id="filter-count">0 trainees</span>
+            </div>
+            <div id="users-table-wrap" class="table-wrap">
+              <table class="data-table" id="users-table">
+                <thead>
+                  <tr>
+                    <th>Trainee</th>
+                    <th>Goal</th>
+                    <th>Level</th>
+                    <th>Streak</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="users-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- User Detail Panel -->
+          <div class="user-detail-col" id="user-detail-col">
+            <div class="user-detail-empty" id="user-detail-empty">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              <p>Select a trainee to view details</p>
+            </div>
+            <div class="user-detail-content hidden" id="user-detail-content"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel: Compliance -->
+      <section class="tab-panel" id="panel-compliance">
+        <div class="grid-2col">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Macro Adherence</h3></div>
+            <div class="compliance-bars" id="compliance-bars">
+              <div class="compliance-row">
+                <div class="compliance-label"><span>Protein Target</span><span class="compliance-pct" style="color:#CDFF3F">82%</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:82%;background:#CDFF3F"></div></div>
+              </div>
+              <div class="compliance-row">
+                <div class="compliance-label"><span>Calorie Balance</span><span class="compliance-pct" style="color:#7AD7FF">90%</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:90%;background:#7AD7FF"></div></div>
+              </div>
+              <div class="compliance-row">
+                <div class="compliance-label"><span>Carb Targets</span><span class="compliance-pct" style="color:#FF9C38">71%</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:71%;background:#FF9C38"></div></div>
+              </div>
+              <div class="compliance-row">
+                <div class="compliance-label"><span>Fat Targets</span><span class="compliance-pct" style="color:#3FCEA4">68%</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:68%;background:#3FCEA4"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Workout Compliance</h3></div>
+            <div class="compliance-bars">
+              <div class="compliance-row">
+                <div class="compliance-label"><span>Sets Completed</span><span class="compliance-pct" style="color:#CDFF3F">76%</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:76%;background:#CDFF3F"></div></div>
+              </div>
+              <div class="compliance-row">
+                <div class="compliance-label"><span>Weekly Frequency</span><span class="compliance-pct" style="color:#3FCEA4">83%</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:83%;background:#3FCEA4"></div></div>
+              </div>
+              <div class="compliance-row">
+                <div class="compliance-label"><span>Full Workout Days</span><span class="compliance-pct" style="color:#7AD7FF">61%</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:61%;background:#7AD7FF"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:24px">
+          <div class="card-header">
+            <h3 class="card-title">Inactive Trainees (0-day streak)</h3>
+            <span class="card-badge badge-red" id="inactive-count">0</span>
+          </div>
+          <div id="inactive-list" class="recent-list"></div>
+        </div>
+      </section>
+
+      <!-- Panel: Revenue -->
+      <section class="tab-panel" id="panel-monetization">
+        <div class="staged-banner">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+          <span>STAGED FOR MONETIZATION — Subscription processing is structurally ready. Live payments will be activated in the next development cycle.</span>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card" style="border-color: rgba(205,255,63,0.2)">
+            <div class="stat-label">Monthly Recurring Revenue</div>
+            <div class="stat-value">₹0.00</div>
+            <div class="stat-sub">Awaiting payment activation</div>
+          </div>
+          <div class="stat-card" style="border-color: rgba(205,255,63,0.2)">
+            <div class="stat-label">Projected MRR</div>
+            <div class="stat-value" id="projected-mrr">₹0</div>
+            <div class="stat-sub">Based on active user base</div>
+          </div>
+          <div class="stat-card" style="border-color: rgba(205,255,63,0.2)">
+            <div class="stat-label">Free Trial Users</div>
+            <div class="stat-value" id="trial-users">—</div>
+            <div class="stat-sub">Eligible for conversion</div>
+          </div>
+          <div class="stat-card" style="border-color: rgba(205,255,63,0.2)">
+            <div class="stat-label">Est. Annual Revenue</div>
+            <div class="stat-value" id="annual-rev">₹0</div>
+            <div class="stat-sub">At 20% conversion rate</div>
+          </div>
+        </div>
+
+        <div class="grid-2col" style="margin-top:24px">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Membership Plans</h3></div>
+            <div class="plans-list">
+              <div class="plan-card" style="border-left-color:#CDFF3F">
+                <div class="plan-name">Forge Starter (Trial)</div>
+                <div class="plan-price">₹0 <span class="plan-period">/ 7 days</span></div>
+                <div class="plan-desc">Basic AI coaching, workout plans, food tracking</div>
+                <div class="plan-bar"><div style="width:78%;height:100%;background:#CDFF3F;border-radius:3px"></div></div>
+                <div class="plan-conversion">78% of users</div>
+              </div>
+              <div class="plan-card" style="border-left-color:#7AD7FF">
+                <div class="plan-name">Forge Pro Monthly</div>
+                <div class="plan-price">₹299 <span class="plan-period">/ month</span></div>
+                <div class="plan-desc">Unlimited AI coaching, camera food logs, progression tracker</div>
+                <div class="plan-bar"><div style="width:14%;height:100%;background:#7AD7FF;border-radius:3px"></div></div>
+                <div class="plan-conversion">14% of users</div>
+              </div>
+              <div class="plan-card" style="border-left-color:#3FCEA4">
+                <div class="plan-name">Forge Elite Annual</div>
+                <div class="plan-price">₹2,499 <span class="plan-period">/ year</span></div>
+                <div class="plan-desc">All Pro benefits + VIP trainer priorities, offline sync</div>
+                <div class="plan-bar"><div style="width:8%;height:100%;background:#3FCEA4;border-radius:3px"></div></div>
+                <div class="plan-conversion">8% of users</div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Revenue Projection</h3></div>
+            <div class="rev-chart-wrap">
+              <svg id="rev-svg" width="100%" height="220" viewBox="0 0 360 220"></svg>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel: Support -->
+      <section class="tab-panel" id="panel-support">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Support Tickets</h3>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="filter-tag active" onclick="filterTickets('all', this)">All</span>
+              <span class="filter-tag" onclick="filterTickets('open', this)">Open</span>
+              <span class="filter-tag" onclick="filterTickets('in_progress', this)">In Progress</span>
+              <span class="filter-tag" onclick="filterTickets('resolved', this)">Resolved</span>
+            </div>
+          </div>
+          <div id="tickets-list" class="tickets-list">
+            <div class="empty-state">Loading tickets...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel: Feedback -->
+      <section class="tab-panel" id="panel-feedback">
+        <div class="grid-2col">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Average Rating</h3></div>
+            <div class="rating-summary" id="rating-summary">
+              <div class="big-rating" id="big-rating">—</div>
+              <div class="rating-stars" id="rating-stars"></div>
+              <div class="rating-sub" id="rating-count">0 reviews</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Rating Distribution</h3></div>
+            <div id="rating-dist" class="rating-dist"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:24px">
+          <div class="card-header"><h3 class="card-title">All Reviews</h3></div>
+          <div id="feedback-list" class="feedback-list">
+            <div class="empty-state">Loading feedback...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel: Announce -->
+      <section class="tab-panel" id="panel-announce">
+        <div class="grid-2col">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Dispatch Broadcast</h3></div>
+            <form id="announce-form" class="announce-form" onsubmit="handleAnnouncement(event)">
+              <div class="field-group">
+                <label class="field-label">Announcement Title</label>
+                <input type="text" id="ann-title" class="field-input" placeholder="e.g. Summer Shred Challenge starts tomorrow!" required />
+              </div>
+              <div class="field-group">
+                <label class="field-label">Message Body</label>
+                <textarea id="ann-body" class="field-textarea" rows="5" placeholder="Detailed message, challenge instructions, or motivational content..." required></textarea>
+              </div>
+              <div class="field-group">
+                <label class="field-label">Target Audience</label>
+                <select id="ann-target" class="field-input">
+                  <option value="all">All Trainees</option>
+                  <option value="bulk">Bulk Goal Only</option>
+                  <option value="cut">Fat Loss Goal Only</option>
+                  <option value="maintain">Maintenance Only</option>
+                </select>
+              </div>
+              <div id="ann-success" class="announce-success hidden">
+                ✅ Broadcast dispatched successfully to all targeted trainees!
+              </div>
+              <button type="submit" class="btn-primary" id="ann-btn">
+                <span id="ann-btn-text">Dispatch Announcement</span>
+                <div id="ann-spinner" class="btn-spinner hidden"></div>
+              </button>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Announcement History</h3></div>
+            <div id="announce-history" class="announce-history">
+              <div class="empty-state">No announcements yet.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- User Detail Drawer (large screen) -->
+  <div id="detail-drawer" class="detail-drawer hidden">
+    <div class="drawer-overlay" onclick="closeDrawer()"></div>
+    <div class="drawer-panel">
+      <div class="drawer-header">
+        <h3 class="drawer-title" id="drawer-name">Trainee Details</h3>
+        <button class="drawer-close" onclick="closeDrawer()">✕</button>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
