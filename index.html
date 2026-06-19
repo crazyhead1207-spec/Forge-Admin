@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Forge Admin — System Management Console</title>
-  <meta name="description" content="Forge Fitness Admin Dashboard — Manage trainees, monitor compliance, handle support tickets and dispatch announcements." />
+  <title>Faujii Admin — System Management Console</title>
+  <meta name="description" content="Faujii Admin Dashboard — Manage trainees, monitor compliance, handle support tickets and dispatch announcements." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -16,7 +16,7 @@
   <div id="login-screen" class="login-screen">
     <div class="login-card">
       <div class="login-logo">
-        <span class="logo-text">FORGE<span class="accent-dot">.</span></span>
+        <span class="logo-text">FAUJII<span class="accent-dot">.</span></span>
         <span class="logo-sub">ADMIN CONSOLE</span>
       </div>
       <div class="login-form-wrap">
@@ -25,7 +25,7 @@
         <form id="login-form">
           <div class="field-group">
             <label class="field-label">Email Address</label>
-            <input type="email" id="login-email" class="field-input" placeholder="admin@forgefitness.com" required />
+            <input type="email" id="login-email" class="field-input" placeholder="admin@faujii.com" required />
           </div>
           <div class="field-group">
             <label class="field-label">Password</label>
@@ -38,7 +38,7 @@
           </button>
         </form>
       </div>
-      <p class="login-footer">Forge Fitness · Internal Tools · v2.0</p>
+      <p class="login-footer">Faujii · Internal Tools · v2.0</p>
     </div>
     <div class="login-bg-orbs">
       <div class="orb orb-1"></div>
@@ -52,7 +52,7 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
-        <span class="logo-text">FORGE<span class="accent-dot">.</span></span>
+        <span class="logo-text">FAUJII<span class="accent-dot">.</span></span>
         <span class="logo-badge">ADMIN</span>
       </div>
 
@@ -65,6 +65,14 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span>Trainees</span>
           <span class="nav-badge" id="users-badge">0</span>
+        </a>
+        <a class="nav-item" data-tab="analytics" onclick="switchTab('analytics')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span>Analytics</span>
+        </a>
+        <a class="nav-item" data-tab="plans" onclick="switchTab('plans')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6"/><rect x="2" y="7" width="20" height="5" rx="1"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+          <span>Plans</span>
         </a>
         <a class="nav-item" data-tab="compliance" onclick="switchTab('compliance')">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -219,6 +227,139 @@
       </section>
 
       <!-- Panel: Compliance -->
+      <!-- Panel: Feature Analytics -->
+      <section class="tab-panel" id="panel-analytics">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Active Users (30d)</div>
+            <div class="stat-value" id="analytics-active-30d" style="color:#7AD7FF">0</div>
+            <div class="stat-sub">Used the app in last 30 days</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Repeat Customers</div>
+            <div class="stat-value" id="analytics-repeat" style="color:#CDFF3F">0</div>
+            <div class="stat-sub">Returned on 2+ separate days</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Repeat Rate</div>
+            <div class="stat-value" id="analytics-repeat-pct" style="color:#3FCEA4">—</div>
+            <div class="stat-sub">Of active users</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Power Users</div>
+            <div class="stat-value" id="analytics-loyal" style="color:#FF9C38">0</div>
+            <div class="stat-sub">Active on 5+ days</div>
+          </div>
+        </div>
+
+        <div class="grid-2col" style="margin-top:24px">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Most-Used Features</h3>
+              <span class="card-badge" id="analytics-total-events">0</span>
+            </div>
+            <div id="feature-usage-list" class="goal-chart-wrap">
+              <div class="empty-state">No usage recorded yet.</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Most-Visited Screens</h3></div>
+            <div id="screen-usage-list" class="goal-chart-wrap">
+              <div class="empty-state">No usage recorded yet.</div>
+            </div>
+          </div>
+        </div>
+        <div class="staged-banner" style="margin-top:20px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h7v8l10-12h-7z"/></svg>
+          <span>This data powers your pricing decisions — features used most are your strongest candidates for a paid tier. Numbers reflect the last 30 days.</span>
+        </div>
+      </section>
+
+      <!-- Panel: Subscription Plans (dynamic) -->
+      <section class="tab-panel" id="panel-plans">
+        <!-- MASTER SWITCH: controls whether users see anything subscription-related -->
+        <div class="card" id="sub-mode-card" style="margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+          <div>
+            <h3 class="card-title" style="margin:0 0 4px">Subscription System Status</h3>
+            <p style="color:var(--text-3);font-size:12.5px;margin:0;max-width:520px">
+              <strong id="sub-mode-label">Hidden</strong> —
+              <span id="sub-mode-desc">users see NO subscription, pricing, upgrade or payment screens. The app is fully free. Flip to Live when you're ready to start charging.</span>
+            </p>
+          </div>
+          <button id="sub-mode-toggle" class="btn-primary" style="white-space:nowrap" onclick="toggleSubscriptionMode()">
+            Loading…
+          </button>
+        </div>
+
+        <div id="plans-setup-warning" class="staged-banner hidden" style="border-color:#FF9C38">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+          <span>Subscription tables not found. Run <strong>forge/db/dynamic_subscriptions_migration.sql</strong> in your Supabase SQL Editor, then refresh this page.</span>
+        </div>
+
+        <div class="grid-2col">
+          <!-- LEFT: existing plans + feature catalogue -->
+          <div>
+            <div class="card">
+              <div class="card-header"><h3 class="card-title">Your Plans</h3></div>
+              <div class="plans-list" id="plans-list">
+                <div class="empty-state">Loading plans…</div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:24px">
+              <div class="card-header"><h3 class="card-title">Feature Catalogue</h3></div>
+              <p style="color:var(--text-3);font-size:12px;margin:0 0 12px">
+                These are the things you can put in a plan. Toggle a feature to Free (everyone) or Premium (paid only).
+                Add future features here — no code change needed to manage them.
+              </p>
+              <div class="logs-list" id="feature-catalogue"></div>
+              <form id="feature-form" onsubmit="addFeature(event)" style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;gap:8px">
+                  <input id="feat-name" class="field-input" placeholder="Feature name (e.g. Live Trainer)" style="flex:1" />
+                  <input id="feat-key" class="field-input" placeholder="key (e.g. live_trainer)" style="flex:1" />
+                </div>
+                <label class="feat-check"><input type="checkbox" id="feat-free" /> <span>Free for everyone</span></label>
+                <button type="submit" class="btn-primary" style="align-self:flex-start">+ Add Feature</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- RIGHT: create / edit plan form -->
+          <div class="card">
+            <div class="card-header"><h3 class="card-title" id="plan-form-title">Create New Plan</h3></div>
+            <form id="plan-form" onsubmit="savePlan(event)" style="display:flex;flex-direction:column;gap:12px">
+              <div class="field-group">
+                <label class="field-label">Plan Name</label>
+                <input id="plan-name" class="field-input" placeholder="e.g. AI Coach + Diet" required />
+              </div>
+              <div class="field-group">
+                <label class="field-label">Description</label>
+                <input id="plan-desc" class="field-input" placeholder="Short description (optional)" />
+              </div>
+              <div style="display:flex;gap:12px">
+                <div class="field-group" style="flex:1">
+                  <label class="field-label">Monthly Price (₹)</label>
+                  <input id="plan-monthly" type="number" min="0" class="field-input" placeholder="299" />
+                </div>
+                <div class="field-group" style="flex:1">
+                  <label class="field-label">Yearly Price (₹)</label>
+                  <input id="plan-yearly" type="number" min="0" class="field-input" placeholder="2499" />
+                </div>
+              </div>
+              <div class="field-group">
+                <label class="field-label">Included Features</label>
+                <div id="plan-form-features" class="feat-check-grid"></div>
+              </div>
+              <label class="feat-check"><input type="checkbox" id="plan-active" checked /> <span>Plan enabled (visible to users)</span></label>
+              <div style="display:flex;gap:10px">
+                <button type="submit" class="btn-primary">Save Plan</button>
+                <button type="button" id="plan-cancel-edit" class="tbl-btn hidden" onclick="resetPlanForm()">Cancel edit</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
       <section class="tab-panel" id="panel-compliance">
         <div class="grid-2col">
           <div class="card">
@@ -274,57 +415,43 @@
       <section class="tab-panel" id="panel-monetization">
         <div class="staged-banner">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
-          <span>STAGED FOR MONETIZATION — Subscription processing is structurally ready. Live payments will be activated in the next development cycle.</span>
+          <span>Numbers below are REAL — pulled from the subscriptions & payments tables. They stay at ₹0 until Razorpay is connected and live payments start flowing.</span>
         </div>
 
         <div class="stats-grid">
           <div class="stat-card" style="border-color: rgba(205,255,63,0.2)">
             <div class="stat-label">Monthly Recurring Revenue</div>
-            <div class="stat-value">₹0.00</div>
-            <div class="stat-sub">Awaiting payment activation</div>
+            <div class="stat-value" id="mrr-real">₹0</div>
+            <div class="stat-sub">From active subscriptions</div>
           </div>
           <div class="stat-card" style="border-color: rgba(205,255,63,0.2)">
-            <div class="stat-label">Projected MRR</div>
+            <div class="stat-label">Lifetime Revenue</div>
             <div class="stat-value" id="projected-mrr">₹0</div>
-            <div class="stat-sub">Based on active user base</div>
+            <div class="stat-sub">All successful payments</div>
           </div>
           <div class="stat-card" style="border-color: rgba(205,255,63,0.2)">
-            <div class="stat-label">Free Trial Users</div>
+            <div class="stat-label">Free / Trial Users</div>
             <div class="stat-value" id="trial-users">—</div>
             <div class="stat-sub">Eligible for conversion</div>
           </div>
           <div class="stat-card" style="border-color: rgba(205,255,63,0.2)">
-            <div class="stat-label">Est. Annual Revenue</div>
+            <div class="stat-label">Annualised MRR</div>
             <div class="stat-value" id="annual-rev">₹0</div>
-            <div class="stat-sub">At 20% conversion rate</div>
+            <div class="stat-sub">Current MRR × 12</div>
           </div>
         </div>
 
         <div class="grid-2col" style="margin-top:24px">
           <div class="card">
-            <div class="card-header"><h3 class="card-title">Membership Plans</h3></div>
-            <div class="plans-list">
-              <div class="plan-card" style="border-left-color:#CDFF3F">
-                <div class="plan-name">Forge Starter (Trial)</div>
-                <div class="plan-price">₹0 <span class="plan-period">/ 7 days</span></div>
-                <div class="plan-desc">Basic AI coaching, workout plans, food tracking</div>
-                <div class="plan-bar"><div style="width:78%;height:100%;background:#CDFF3F;border-radius:3px"></div></div>
-                <div class="plan-conversion">78% of users</div>
-              </div>
-              <div class="plan-card" style="border-left-color:#7AD7FF">
-                <div class="plan-name">Forge Pro Monthly</div>
-                <div class="plan-price">₹299 <span class="plan-period">/ month</span></div>
-                <div class="plan-desc">Unlimited AI coaching, camera food logs, progression tracker</div>
-                <div class="plan-bar"><div style="width:14%;height:100%;background:#7AD7FF;border-radius:3px"></div></div>
-                <div class="plan-conversion">14% of users</div>
-              </div>
-              <div class="plan-card" style="border-left-color:#3FCEA4">
-                <div class="plan-name">Forge Elite Annual</div>
-                <div class="plan-price">₹2,499 <span class="plan-period">/ year</span></div>
-                <div class="plan-desc">All Pro benefits + VIP trainer priorities, offline sync</div>
-                <div class="plan-bar"><div style="width:8%;height:100%;background:#3FCEA4;border-radius:3px"></div></div>
-                <div class="plan-conversion">8% of users</div>
-              </div>
+            <div class="card-header">
+              <h3 class="card-title">Plan Subscribers</h3>
+              <span class="card-badge">live</span>
+            </div>
+            <p style="color:var(--text-3);font-size:12px;margin:0 0 12px">
+              Real subscriber counts per plan. Create &amp; edit plans in the <strong>Plans</strong> tab.
+            </p>
+            <div class="plans-list" id="revenue-plan-mix">
+              <div class="empty-state">No plans yet — create one in the Plans tab.</div>
             </div>
           </div>
           <div class="card">

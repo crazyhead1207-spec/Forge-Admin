@@ -8,6 +8,9 @@ let allUsers = [];
 let allTickets = [];
 let allFeedback = [];
 let allAnnouncements = [];
+let allPlans = [];        // dynamic subscription plans
+let allFeatures = [];     // feature catalogue
+let editingPlanId = null; // plan currently being edited (null = creating new)
 let selectedUserId = null;
 let ticketFilter = 'all';
 
@@ -93,11 +96,39 @@ function showApp(user) {
 const TAB_TITLES = {
   overview: 'Overview',
   users: 'Trainees',
+  analytics: 'Feature Analytics',
+  plans: 'Subscription Plans',
   compliance: 'Compliance',
-  monetization: 'Revenue',
+  monetization: 'Revenue & Subscriptions',
   support: 'Support Tickets',
   feedback: 'Ratings & Feedback',
   announce: 'Announcements',
+};
+
+// Friendly labels for the raw event keys recorded by the app
+const FEATURE_LABELS = {
+  food_scan: 'AI Food Scan (camera)',
+  food_log: 'Food Logging',
+  workout_complete: 'Workout Completed',
+  ai_chat_message: 'AI Coach Chat',
+  diet_plan_generate: 'Diet Plan Generated',
+  run_start: 'Run Tracker Started',
+};
+const SCREEN_LABELS = {
+  dashboard: 'Dashboard / Home',
+  coach: 'AI Coach',
+  'workout-today': 'Today\'s Workout',
+  'workout-active': 'Active Workout',
+  'workout-picker': 'Workout Picker',
+  'workout-editor': 'Workout Editor',
+  'workout-summary': 'Workout Summary',
+  'diet-plan': 'Diet Plan',
+  'food-camera': 'Food Camera',
+  'food-result': 'Food Result',
+  progress: 'Progress',
+  profile: 'Profile',
+  run: 'Run Tracker',
+  community: 'Community',
 };
 
 function switchTab(tab) {
@@ -118,15 +149,61 @@ async function loadAllData() {
     loadTickets(),
     loadFeedback(),
     loadAnnouncements(),
+    loadAnalytics(),
+    loadPlansAndFeatures(),
+    loadSubscriptionMode(),
+    loadRevenue(),
   ]);
+}
+
+// ── Master switch: subscription system Hidden / Live ─────────────────────
+let subscriptionMode = 'hidden';
+
+async function loadSubscriptionMode() {
+  const { data } = await sb.from('app_config').select('value').eq('key', 'subscription_mode').single();
+  subscriptionMode = data?.value === 'live' ? 'live' : 'hidden';
+  renderSubscriptionMode();
+}
+
+function renderSubscriptionMode() {
+  const live = subscriptionMode === 'live';
+  const label = document.getElementById('sub-mode-label');
+  const desc  = document.getElementById('sub-mode-desc');
+  const btn   = document.getElementById('sub-mode-toggle');
+  const card  = document.getElementById('sub-mode-card');
+  if (!btn) return;
+  if (live) {
+    label.textContent = 'Live';
+    desc.textContent = 'users CAN see subscription plans, upgrade screens and paid-feature gating. Flip to Hidden to make the whole app free again instantly.';
+    btn.textContent = '🔴 Switch to Hidden';
+    card.style.borderColor = 'rgba(205,255,63,0.4)';
+  } else {
+    label.textContent = 'Hidden';
+    desc.textContent = 'users see NO subscription, pricing, upgrade or payment screens. The app is fully free. Flip to Live when you’re ready to start charging.';
+    btn.textContent = '🟢 Go Live';
+    card.style.borderColor = 'rgba(255,255,255,0.07)';
+  }
+}
+
+async function toggleSubscriptionMode() {
+  const next = subscriptionMode === 'live' ? 'hidden' : 'live';
+  if (next === 'live' && !confirm('Go LIVE?\n\nUsers will start seeing subscription plans and paid features will be gated according to their plan. Make sure you have created your plans first.')) return;
+  const { error } = await sb.from('app_config')
+    .upsert({ key: 'subscription_mode', value: next, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) { alert('Could not change mode: ' + error.message); return; }
+  subscriptionMode = next;
+  renderSubscriptionMode();
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 async function loadOverviewStats() {
-  const [{ data: profiles }, { data: workouts }, { count: chatCount }] = await Promise.all([
+  // Pull the last 7 days of usage events once — powers real DAU + trend.
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const [{ data: profiles }, { data: workouts }, { count: chatCount }, { data: events }] = await Promise.all([
     sb.from('profiles').select('id,goal,level,is_admin,is_suspended,name,created_at'),
     sb.from('workout_history').select('completed'),
     sb.from('chat_messages').select('*', { count: 'exact', head: true }),
+    sb.from('usage_events').select('user_id,created_at').gte('created_at', sevenDaysAgo),
   ]);
 
   const total = profiles?.length || 0;
@@ -136,10 +213,17 @@ async function loadOverviewStats() {
   const completed = (workouts || []).filter(w => w.completed).length;
   const completionRate = workouts?.length ? Math.round((completed / workouts.length) * 100) : 0;
 
+  // Real Daily Active Users = distinct users with an event today
+  const todayStr = new Date().toDateString();
+  const dau = new Set((events || [])
+    .filter(e => new Date(e.created_at).toDateString() === todayStr)
+    .map(e => e.user_id)).size;
+  const dauPct = total ? Math.round((dau / total) * 100) : 0;
+
   // Stats cards
   document.getElementById('stats-grid').innerHTML = `
     ${statCard('Total Trainees', total, `+${newSignups} this week`, '#CDFF3F', iconUsers())}
-    ${statCard('Daily Active', Math.round(total * 0.42), '~42% of base', '#7AD7FF', iconActivity())}
+    ${statCard('Daily Active', dau, total ? `${dauPct}% of base` : 'No activity yet', '#7AD7FF', iconActivity())}
     ${statCard('Workout Completion', completionRate + '%', 'Exercises logged', '#3FCEA4', iconDumbbell())}
     ${statCard('AI Chat Sessions', chatCount || 0, 'Total interactions', '#FF9C38', iconChat())}
   `;
@@ -167,8 +251,8 @@ async function loadOverviewStats() {
       </div>`;
   }).join('');
 
-  // Trend chart (simulated based on signup dates)
-  drawTrendChart(profiles || []);
+  // Trend chart — real distinct active users per day (last 7 days)
+  drawTrendChart(events || []);
 
   // Recent signups
   const recent = [...(profiles || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6);
@@ -184,32 +268,28 @@ async function loadOverviewStats() {
     </div>
   `).join('');
 
-  // Revenue projections
-  document.getElementById('projected-mrr').textContent = '₹' + (total * 299 * 0.05).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-  document.getElementById('trial-users').textContent = total;
-  document.getElementById('annual-rev').textContent = '₹' + (total * 299 * 0.2 * 12).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-
   // Inactive users count (from allUsers if loaded)
   updateInactiveList(profiles || []);
-
-  drawRevenueChart();
 }
 
-function drawTrendChart(profiles) {
+function drawTrendChart(events) {
   const svg = document.getElementById('trend-svg');
-  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const now = new Date();
-  const counts = days.map((_, i) => {
+  // Build the last 7 calendar days, labelled by weekday.
+  const dayDefs = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now);
     d.setDate(d.getDate() - (6 - i));
-    return profiles.filter(p => {
-      const pd = new Date(p.created_at);
-      return pd.toDateString() === d.toDateString();
-    }).length;
+    return { key: d.toDateString(), label: d.toLocaleDateString('en-IN', { weekday: 'short' }) };
   });
 
-  // Simulate activity (new signups × 5 + base)
-  const vals = counts.map(c => Math.max(3, c * 5 + Math.round(profiles.length * 0.35)));
+  // Real metric: distinct active users per day
+  const vals = dayDefs.map(({ key }) => {
+    const usersThatDay = new Set(
+      (events || []).filter(e => new Date(e.created_at).toDateString() === key).map(e => e.user_id)
+    );
+    return usersThatDay.size;
+  });
+  const days = dayDefs.map(d => d.label);
   const maxV = Math.max(...vals, 1);
   const W = 400, H = 160, pad = 20;
   const pts = vals.map((v, i) => {
@@ -241,13 +321,149 @@ function drawTrendChart(profiles) {
   ).join('');
 }
 
-function drawRevenueChart() {
+// ── Feature Analytics ──────────────────────────────────────────────────────────
+// Answers: which features/screens get used most + how many users come back.
+async function loadAnalytics() {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: events } = await sb
+    .from('usage_events')
+    .select('user_id,event_type,screen,feature,created_at')
+    .gte('created_at', since);
+  const ev = events || [];
+
+  // Most-used features (explicit actions) and screens (page opens)
+  const featureCounts = {};
+  const screenCounts = {};
+  ev.forEach(e => {
+    if (e.event_type === 'feature_use' && e.feature) featureCounts[e.feature] = (featureCounts[e.feature] || 0) + 1;
+    if (e.event_type === 'screen_view' && e.screen) screenCounts[e.screen] = (screenCounts[e.screen] || 0) + 1;
+  });
+  renderUsageBars('feature-usage-list', featureCounts, FEATURE_LABELS, '#CDFF3F');
+  renderUsageBars('screen-usage-list', screenCounts, SCREEN_LABELS, '#7AD7FF');
+
+  // Retention / repeat customers: distinct active DAYS per user (last 30 days)
+  const userDays = {};
+  ev.forEach(e => {
+    const day = new Date(e.created_at).toDateString();
+    (userDays[e.user_id] = userDays[e.user_id] || new Set()).add(day);
+  });
+  const activeUsers = Object.keys(userDays).length;
+  const dayCounts = Object.values(userDays).map(s => s.size);
+  const repeatUsers = dayCounts.filter(n => n >= 2).length;  // returned on 2+ separate days
+  const loyalUsers  = dayCounts.filter(n => n >= 5).length;  // returned on 5+ separate days
+  const repeatPct = activeUsers ? Math.round((repeatUsers / activeUsers) * 100) : 0;
+
+  setText('analytics-active-30d', activeUsers);
+  setText('analytics-repeat', repeatUsers);
+  setText('analytics-repeat-pct', activeUsers ? repeatPct + '%' : '—');
+  setText('analytics-loyal', loyalUsers);
+  setText('analytics-total-events', ev.length.toLocaleString('en-IN'));
+}
+
+// Renders a ranked horizontal bar list into a container.
+function renderUsageBars(elId, counts, labelMap, color) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-state">No usage recorded yet. Data appears once trainees start using the app.</div>';
+    return;
+  }
+  const max = rows[0][1] || 1;
+  el.innerHTML = rows.map(([key, count]) => {
+    const pct = Math.round((count / max) * 100);
+    const label = (labelMap && labelMap[key]) || key;
+    return `
+      <div class="goal-row">
+        <div class="goal-row-header">
+          <span class="goal-label">${label}</span>
+          <span class="goal-pct" style="color:${color}">${count.toLocaleString('en-IN')}</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+      </div>`;
+  }).join('');
+}
+
+// ── Revenue & Subscriptions ─────────────────────────────────────────────────────
+// Real numbers from the subscriptions + payments tables.
+async function loadRevenue() {
+  const [{ data: subs }, { data: payments }] = await Promise.all([
+    sb.from('subscriptions').select('plan_id,status,amount'),
+    sb.from('payments').select('amount,status,created_at'),
+  ]);
+  const allSubs = subs || [];
+  const pays = payments || [];
+
+  // MRR = sum of amounts on currently-active subscriptions
+  const active = allSubs.filter(s => s.status === 'active');
+  const mrr = active.reduce((sum, s) => sum + (s.amount || 0), 0);
+  const trialCount = allSubs.filter(s => s.status === 'trial' || !s.plan_id).length;
+
+  // Real lifetime revenue from successful payments
+  const lifetimeRev = pays.filter(p => p.status === 'success').reduce((sum, p) => sum + (p.amount || 0), 0);
+
+  setText('mrr-real', '₹' + mrr.toLocaleString('en-IN'));
+  setText('projected-mrr', '₹' + lifetimeRev.toLocaleString('en-IN'));
+  setText('trial-users', trialCount);
+  setText('annual-rev', '₹' + (mrr * 12).toLocaleString('en-IN'));
+
+  drawRevenueChart(pays);
+}
+
+// Fetches subscriptions and renders the per-plan subscriber mix. Called after
+// plans are loaded (needs allPlans), so it lives separately from loadRevenue.
+async function loadRevenuePlanMix() {
+  const { data: subs } = await sb.from('subscriptions').select('plan_id,status');
+  renderRevenuePlanMix(subs || []);
+}
+
+// Shows how many users are on each dynamic plan (vs free)
+function renderRevenuePlanMix(allSubs) {
+  const el = document.getElementById('revenue-plan-mix');
+  if (!el) return;
+  const total = allSubs.length || 1;
+  const colors = ['#CDFF3F', '#7AD7FF', '#3FCEA4', '#FF9C38', '#C084FC', '#FB7185'];
+  const freeCount = allSubs.filter(s => !s.plan_id).length;
+
+  const rows = (allPlans || []).map((p, i) => {
+    const count = allSubs.filter(s => s.plan_id === p.id).length;
+    const pct = Math.round((count / total) * 100);
+    return { name: p.name, count, pct, color: colors[i % colors.length] };
+  });
+  rows.unshift({ name: 'Free / No plan', count: freeCount, pct: Math.round((freeCount / total) * 100), color: '#5A5A56' });
+
+  el.innerHTML = rows.map(r => `
+    <div class="plan-card" style="border-left-color:${r.color}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="plan-name">${r.name}</div>
+        <div class="plan-conversion">${r.count} users · ${r.pct}%</div>
+      </div>
+      <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" style="width:${r.pct}%;background:${r.color}"></div></div>
+    </div>
+  `).join('');
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function drawRevenueChart(payments) {
   const svg = document.getElementById('rev-svg');
-  const data = [
-    { m: 'Jan', v: 20 }, { m: 'Feb', v: 32 }, { m: 'Mar', v: 45 },
-    { m: 'Apr', v: 68 }, { m: 'May', v: 95 }, { m: 'Jun', v: 120 },
-  ];
-  const maxV = 120;
+  if (!svg) return;
+  // Build last 6 months of real successful-payment revenue
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    return { m: d.toLocaleDateString('en-IN', { month: 'short' }), y: d.getFullYear(), mo: d.getMonth(), v: 0 };
+  });
+  (payments || []).filter(p => p.status === 'success').forEach(p => {
+    const d = new Date(p.created_at);
+    const slot = months.find(s => s.mo === d.getMonth() && s.y === d.getFullYear());
+    if (slot) slot.v += (p.amount || 0);
+  });
+  const data = months;
+  const maxV = Math.max(...data.map(d => d.v), 1);
   const W = 360, H = 220, padX = 30, padY = 20, barW = 32;
   const slotW = (W - 2 * padX) / data.length;
 
@@ -267,9 +483,219 @@ function drawRevenueChart() {
         <text x="${x + barW/2}" y="${H - 6}" text-anchor="middle" font-size="10" fill="#5A5A56" font-family="DM Sans">${d.m}</text>
       `;
     }).join('')}
-    <text x="8" y="${padY}" font-size="9" fill="#5A5A56" font-family="DM Sans">₹120</text>
-    <text x="8" y="${H/2}" font-size="9" fill="#5A5A56" font-family="DM Sans">₹60</text>
+    <text x="8" y="${padY}" font-size="9" fill="#5A5A56" font-family="DM Sans">₹${Math.round(maxV).toLocaleString('en-IN')}</text>
+    <text x="8" y="${H/2}" font-size="9" fill="#5A5A56" font-family="DM Sans">₹${Math.round(maxV/2).toLocaleString('en-IN')}</text>
   `;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// DYNAMIC SUBSCRIPTION PLANS  (create / edit / delete plans + features)
+// Reads & writes: features, subscription_plans, plan_features
+// ════════════════════════════════════════════════════════════════════════
+async function loadPlansAndFeatures() {
+  const [{ data: features, error: fErr }, { data: plans }, { data: links }] = await Promise.all([
+    sb.from('features').select('*').order('sort_order', { ascending: true }),
+    sb.from('subscription_plans').select('*').order('sort_order', { ascending: true }),
+    sb.from('plan_features').select('plan_id,feature_id'),
+  ]);
+
+  // If the tables don't exist yet (migration not run), show a friendly hint
+  // instead of breaking the page.
+  if (fErr) {
+    const warn = document.getElementById('plans-setup-warning');
+    if (warn) warn.classList.remove('hidden');
+    return;
+  }
+  const warn = document.getElementById('plans-setup-warning');
+  if (warn) warn.classList.add('hidden');
+
+  allFeatures = features || [];
+  const linksByPlan = {};
+  (links || []).forEach(l => { (linksByPlan[l.plan_id] = linksByPlan[l.plan_id] || []).push(l.feature_id); });
+  allPlans = (plans || []).map(p => ({ ...p, featureIds: linksByPlan[p.id] || [] }));
+
+  renderFeatureCatalogue();
+  renderPlans();
+  renderPlanFormFeatures();
+  loadRevenuePlanMix(); // refresh the per-plan subscriber mix on the Revenue tab
+}
+
+function renderFeatureCatalogue() {
+  const el = document.getElementById('feature-catalogue');
+  if (!el) return;
+  if (!allFeatures.length) {
+    el.innerHTML = '<div class="empty-state">No features yet. Add one below.</div>';
+    return;
+  }
+  el.innerHTML = allFeatures.map(f => `
+    <div class="log-item">
+      <span class="log-name">${f.name} <span style="color:var(--text-3);font-size:11px">(${f.key})</span></span>
+      <button class="tbl-btn" onclick="toggleFeatureFree('${f.id}', ${f.is_free})">
+        ${f.is_free ? '🟢 Free' : '🔒 Premium'}
+      </button>
+    </div>
+  `).join('');
+}
+
+async function toggleFeatureFree(featureId, currentlyFree) {
+  const { error } = await sb.from('features').update({ is_free: !currentlyFree }).eq('id', featureId);
+  if (!error) loadPlansAndFeatures();
+}
+
+async function addFeature(e) {
+  e.preventDefault();
+  const name = document.getElementById('feat-name').value.trim();
+  const key  = document.getElementById('feat-key').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  const isFree = document.getElementById('feat-free').checked;
+  if (!name || !key) return;
+  const { error } = await sb.from('features').insert({ name, key, is_free: isFree, sort_order: allFeatures.length + 1 });
+  if (error) { alert('Could not add feature: ' + error.message); return; }
+  document.getElementById('feat-name').value = '';
+  document.getElementById('feat-key').value = '';
+  loadPlansAndFeatures();
+}
+
+function renderPlans() {
+  const el = document.getElementById('plans-list');
+  if (!el) return;
+  if (!allPlans.length) {
+    el.innerHTML = '<div class="empty-state">No plans yet. Create your first plan on the right →</div>';
+    return;
+  }
+  const featName = id => (allFeatures.find(f => f.id === id) || {}).name || '?';
+  el.innerHTML = allPlans.map(p => `
+    <div class="plan-card" style="border-left-color:${p.is_active ? '#CDFF3F' : '#5A5A56'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div class="plan-name">${p.name} ${p.is_active ? '' : '<span class="pill pill-red" style="font-size:9px">DISABLED</span>'}</div>
+        <div style="display:flex;gap:6px">
+          <button class="tbl-btn" onclick="editPlan('${p.id}')">Edit</button>
+          <button class="tbl-btn" onclick="togglePlanActive('${p.id}', ${p.is_active})">${p.is_active ? 'Disable' : 'Enable'}</button>
+          <button class="tbl-btn" style="color:var(--red)" onclick="deletePlan('${p.id}', '${(p.name||'').replace(/'/g,"\\'")}')">Delete</button>
+        </div>
+      </div>
+      <div class="plan-price">₹${(p.price_monthly||0).toLocaleString('en-IN')} <span class="plan-period">/ mo</span>
+        ${p.price_yearly ? ` · ₹${p.price_yearly.toLocaleString('en-IN')} <span class="plan-period">/ yr</span>` : ''}</div>
+      ${p.description ? `<div class="plan-desc">${p.description}</div>` : ''}
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">
+        ${p.featureIds.length
+          ? p.featureIds.map(id => `<span class="pill pill-accent" style="font-size:10px">${featName(id)}</span>`).join('')
+          : '<span style="color:var(--text-3);font-size:12px">No features selected</span>'}
+      </div>
+    </div>
+  `).join('');
+}
+
+// Render the feature checkboxes inside the create/edit form
+function renderPlanFormFeatures() {
+  const el = document.getElementById('plan-form-features');
+  if (!el) return;
+  if (!allFeatures.length) {
+    el.innerHTML = '<div style="color:var(--text-3);font-size:12px">Add features first.</div>';
+    return;
+  }
+  el.innerHTML = allFeatures.map(f => `
+    <label class="feat-check">
+      <input type="checkbox" value="${f.id}" class="plan-feat-cb" />
+      <span>${f.name}</span>
+    </label>
+  `).join('');
+}
+
+function editPlan(planId) {
+  const p = allPlans.find(x => x.id === planId);
+  if (!p) return;
+  editingPlanId = planId;
+  document.getElementById('plan-form-title').textContent = 'Edit Plan';
+  document.getElementById('plan-name').value = p.name || '';
+  document.getElementById('plan-desc').value = p.description || '';
+  document.getElementById('plan-monthly').value = p.price_monthly || 0;
+  document.getElementById('plan-yearly').value = p.price_yearly || 0;
+  document.getElementById('plan-active').checked = !!p.is_active;
+  document.querySelectorAll('.plan-feat-cb').forEach(cb => { cb.checked = p.featureIds.includes(cb.value); });
+  document.getElementById('plan-cancel-edit').classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetPlanForm() {
+  editingPlanId = null;
+  document.getElementById('plan-form-title').textContent = 'Create New Plan';
+  document.getElementById('plan-name').value = '';
+  document.getElementById('plan-desc').value = '';
+  document.getElementById('plan-monthly').value = '';
+  document.getElementById('plan-yearly').value = '';
+  document.getElementById('plan-active').checked = true;
+  document.querySelectorAll('.plan-feat-cb').forEach(cb => { cb.checked = false; });
+  document.getElementById('plan-cancel-edit').classList.add('hidden');
+}
+
+async function savePlan(e) {
+  e.preventDefault();
+  const payload = {
+    name: document.getElementById('plan-name').value.trim(),
+    description: document.getElementById('plan-desc').value.trim(),
+    price_monthly: parseInt(document.getElementById('plan-monthly').value || '0', 10),
+    price_yearly: parseInt(document.getElementById('plan-yearly').value || '0', 10),
+    is_active: document.getElementById('plan-active').checked,
+  };
+  if (!payload.name) { alert('Please enter a plan name.'); return; }
+  const selectedFeatureIds = [...document.querySelectorAll('.plan-feat-cb:checked')].map(cb => cb.value);
+
+  let planId = editingPlanId;
+  if (editingPlanId) {
+    payload.updated_at = new Date().toISOString();
+    const { error } = await sb.from('subscription_plans').update(payload).eq('id', editingPlanId);
+    if (error) { alert('Could not save plan: ' + error.message); return; }
+  } else {
+    payload.sort_order = allPlans.length + 1;
+    const { data, error } = await sb.from('subscription_plans').insert(payload).select('id').single();
+    if (error) { alert('Could not create plan: ' + error.message); return; }
+    planId = data.id;
+  }
+
+  // Re-sync the plan↔feature links: clear then insert the selected set
+  await sb.from('plan_features').delete().eq('plan_id', planId);
+  if (selectedFeatureIds.length) {
+    await sb.from('plan_features').insert(selectedFeatureIds.map(fid => ({ plan_id: planId, feature_id: fid })));
+  }
+
+  resetPlanForm();
+  loadPlansAndFeatures();
+  loadRevenue(); // refresh plan-mix percentages on the revenue tab
+}
+
+async function togglePlanActive(planId, currentlyActive) {
+  const { error } = await sb.from('subscription_plans')
+    .update({ is_active: !currentlyActive, updated_at: new Date().toISOString() }).eq('id', planId);
+  if (!error) loadPlansAndFeatures();
+}
+
+async function deletePlan(planId, name) {
+  if (!confirm(`Delete the plan "${name}"?\n\nUsers currently on it will fall back to free access. This cannot be undone.`)) return;
+  const { error } = await sb.from('subscription_plans').delete().eq('id', planId);
+  if (!error) { loadPlansAndFeatures(); loadRevenue(); }
+}
+
+// Manually assign / change a user's subscription (requirement: assign access to users)
+async function assignUserSubscription(userId, prefix) {
+  const planId = document.getElementById(`${prefix}-sub-plan-${userId}`).value || null;
+  const status = document.getElementById(`${prefix}-sub-status-${userId}`).value;
+  const expiry = document.getElementById(`${prefix}-sub-expiry-${userId}`).value || null;
+  const plan = (allPlans || []).find(p => p.id === planId);
+
+  const row = {
+    user_id: userId,
+    plan_id: planId,
+    status,
+    amount: plan ? (plan.price_monthly || 0) : 0,
+    current_period_end: expiry ? new Date(expiry).toISOString() : null,
+    updated_at: new Date().toISOString(),
+  };
+  // Upsert by user_id (one subscription row per user)
+  const { error } = await sb.from('subscriptions').upsert(row, { onConflict: 'user_id' });
+  if (error) { alert('Could not save subscription: ' + error.message); return; }
+  loadUserLogs(userId, prefix === 'drw');
+  loadRevenue();
+  loadRevenuePlanMix();
 }
 
 // ── Users ─────────────────────────────────────────────────────────────────────
@@ -450,6 +876,13 @@ function buildUserDetail(user, isDrawer) {
     </div>
 
     <div>
+      <div class="detail-section-title">Subscription & Payments</div>
+      <div id="${prefix}-billing-${user.id}" class="detail-rows">
+        <div style="color:var(--text-3);font-size:12px">Loading subscription…</div>
+      </div>
+    </div>
+
+    <div>
       <div class="detail-section-title">Moderation</div>
       <div class="detail-actions">
         <button class="detail-btn ${user.isSuspended ? 'detail-btn-unsuspend' : 'detail-btn-suspend'}"
@@ -467,12 +900,56 @@ function buildUserDetail(user, isDrawer) {
   `;
 }
 
+const PLAN_LABELS = { free: 'Free', trial: 'Free Trial', pro_monthly: 'Pro Monthly', pro_annual: 'Elite Annual' };
+const SUB_STATUS_COLORS = { active: 'var(--green)', trial: 'var(--blue)', past_due: '#FF9C38', canceled: 'var(--red)', expired: 'var(--text-3)' };
+
 async function loadUserLogs(userId, isDrawer = false) {
   const prefix = isDrawer ? 'drw' : 'det';
-  const [{ data: workouts }, { data: foods }] = await Promise.all([
+  const [{ data: workouts }, { data: foods }, { data: sub }, { data: pays }] = await Promise.all([
     sb.from('workout_history').select('split,date,completed').eq('user_id', userId).order('date', { ascending: false }).limit(10),
     sb.from('food_logs').select('name,cal,logged_at').eq('user_id', userId).order('logged_at', { ascending: false }).limit(10),
+    sb.from('subscriptions').select('*').eq('user_id', userId).single(),
+    sb.from('payments').select('amount,status,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(10),
   ]);
+
+  const bEl = document.getElementById(`${prefix}-billing-${userId}`);
+  if (bEl) {
+    const currentPlanId = sub?.plan_id || '';
+    const status = sub?.status || 'trial';
+    const expiryVal = sub?.current_period_end ? sub.current_period_end.slice(0, 10) : '';
+    const paysList = (pays || []).length
+      ? pays.map(p => `
+          <div class="log-item">
+            <span class="log-name">₹${(p.amount || 0).toLocaleString('en-IN')} · ${formatDate(p.created_at)}</span>
+            <span class="log-val" style="color:${p.status === 'success' ? 'var(--green)' : p.status === 'refunded' ? '#FF9C38' : 'var(--red)'}">${p.status}</span>
+          </div>`).join('')
+      : '<div class="empty-state" style="padding:8px">No payments yet.</div>';
+
+    const planOptions = `<option value="">Free / No plan</option>` +
+      (allPlans || []).map(p => `<option value="${p.id}" ${p.id === currentPlanId ? 'selected' : ''}>${p.name} (₹${(p.price_monthly||0)}/mo)</option>`).join('');
+    const statusOptions = ['trial','active','past_due','canceled','expired']
+      .map(s => `<option value="${s}" ${s === status ? 'selected' : ''}>${s.replace('_',' ')}</option>`).join('');
+
+    bEl.innerHTML = `
+      <div class="field-group" style="margin-bottom:8px">
+        <label class="field-label">Assign Plan</label>
+        <select id="${prefix}-sub-plan-${userId}" class="field-input">${planOptions}</select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div class="field-group" style="flex:1">
+          <label class="field-label">Status</label>
+          <select id="${prefix}-sub-status-${userId}" class="field-input" style="text-transform:capitalize">${statusOptions}</select>
+        </div>
+        <div class="field-group" style="flex:1">
+          <label class="field-label">Expiry Date</label>
+          <input type="date" id="${prefix}-sub-expiry-${userId}" class="field-input" value="${expiryVal}" />
+        </div>
+      </div>
+      <button class="detail-btn detail-btn-admin" style="margin-top:6px" onclick="assignUserSubscription('${userId}','${prefix}')">💳 Save Subscription</button>
+      <div style="font-size:11px;font-weight:700;color:var(--text-3);margin:14px 0 6px;text-transform:uppercase;letter-spacing:0.8px">Payment History</div>
+      <div class="logs-list">${paysList}</div>
+    `;
+  }
 
   const wEl = document.getElementById(`${prefix}-workouts-${userId}`);
   if (wEl) {
