@@ -89,7 +89,10 @@ function showLogin() {
   document.getElementById('app').classList.add('hidden');
 }
 
+let currentUser = null; // the logged-in admin's auth user (for Settings)
+
 function showApp(user) {
+  currentUser = user;
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   const name = user.email?.split('@')[0] || 'Admin';
@@ -108,6 +111,7 @@ const TAB_TITLES = {
   support: 'Support Tickets',
   feedback: 'Ratings & Feedback',
   announce: 'Announcements',
+  settings: 'Admin Settings',
 };
 
 // Friendly labels for the raw event keys recorded by the app
@@ -173,6 +177,53 @@ function switchTab(tab) {
   const panel = document.getElementById(`panel-${tab}`);
   if (panel) { panel.classList.add('active'); panel.classList.add('anim-in'); }
   document.getElementById('page-title').textContent = TAB_TITLES[tab] || tab;
+  if (tab === 'settings') loadSettings();
+}
+
+// ── Admin Settings ──────────────────────────────────────────────────────────────
+async function loadSettings() {
+  if (!currentUser) return;
+  setVal('set-email', currentUser.email || '');
+  setText('set-sec-email', currentUser.email || '');
+  setText('set-sec-last', currentUser.last_sign_in_at ? formatDate(currentUser.last_sign_in_at) : '—');
+  const { data } = await sb.from('profiles').select('name').eq('id', currentUser.id).single();
+  setVal('set-name', data?.name || '');
+}
+
+function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
+function settingsMsg(id, text, ok) {
+  const el = document.getElementById(id); if (!el) return;
+  el.textContent = text;
+  el.style.color = ok ? '#3FCEA4' : '#FF6161';
+  el.style.display = 'block';
+}
+
+async function saveAdminProfile() {
+  if (!currentUser) return;
+  const name = document.getElementById('set-name').value.trim();
+  if (!name) { settingsMsg('set-profile-msg', 'Name cannot be empty.', false); return; }
+  const { error } = await sb.from('profiles').update({ name }).eq('id', currentUser.id);
+  if (error) { settingsMsg('set-profile-msg', 'Could not save: ' + error.message, false); return; }
+  document.getElementById('admin-name').textContent = name;
+  settingsMsg('set-profile-msg', 'Profile saved ✓', true);
+}
+
+async function changeAdminPassword() {
+  const p1 = document.getElementById('set-pw1').value;
+  const p2 = document.getElementById('set-pw2').value;
+  if (p1.length < 8) { settingsMsg('set-pw-msg', 'Password must be at least 8 characters.', false); return; }
+  if (p1 !== p2) { settingsMsg('set-pw-msg', 'Passwords do not match.', false); return; }
+  const { error } = await sb.auth.updateUser({ password: p1 });
+  if (error) { settingsMsg('set-pw-msg', 'Could not update: ' + error.message, false); return; }
+  document.getElementById('set-pw1').value = '';
+  document.getElementById('set-pw2').value = '';
+  settingsMsg('set-pw-msg', 'Password updated ✓', true);
+}
+
+async function signOutEverywhere() {
+  if (!confirm('Sign out of ALL devices? You will need to log in again.')) return;
+  await sb.auth.signOut({ scope: 'global' });
+  showLogin();
 }
 
 // ── Data Loading ──────────────────────────────────────────────────────────────
