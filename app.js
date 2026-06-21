@@ -2,6 +2,7 @@
 const SUPABASE_URL  = 'https://fbaiyziavefufdbtaabo.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZiYWl5emlhdmVmdWZkYnRhYWJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzODQ2MTksImV4cCI6MjA5NTk2MDYxOX0.tdIb4-XC5fPLug8UFz-0lkZDUVejMyIgn5I1CRF76-A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const ADMIN_API_ORIGIN = document.querySelector('meta[name="faujii-api-origin"]')?.content?.replace(/\/$/, '') || 'https://faujii.vercel.app';
 
 // ── App State ────────────────────────────────────────────────────────────────
 let allUsers = [];
@@ -13,24 +14,28 @@ let allFeatures = [];     // feature catalogue
 let editingPlanId = null; // plan currently being edited (null = creating new)
 let selectedUserId = null;
 let ticketFilter = 'all';
+let activeAdminId = null;
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
-sb.auth.onAuthStateChange((_event, session) => {
-  if (session) {
-    showApp(session.user);
-    loadAllData();
-  } else {
-    showLogin();
+async function startAdminSession(session) {
+  if (!session) { activeAdminId = null; showLogin(); return; }
+  if (activeAdminId === session.user.id) return;
+  const { data: profile } = await sb.from('profiles').select('is_admin').eq('id', session.user.id).single();
+  if (!profile?.is_admin) {
+    await sb.auth.signOut();
+    document.getElementById('login-error').textContent = 'Access denied. This account does not have admin privileges.';
+    document.getElementById('login-error').classList.remove('hidden');
+    return;
   }
-});
+  activeAdminId = session.user.id;
+  showApp(session.user);
+  loadAllData();
+}
+
+sb.auth.onAuthStateChange((_event, session) => { startAdminSession(session); });
 
 sb.auth.getSession().then(({ data: { session } }) => {
-  if (session) {
-    showApp(session.user);
-    loadAllData();
-  } else {
-    showLogin();
-  }
+  startAdminSession(session);
 });
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -70,11 +75,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     return;
   }
 
-  showApp(data.user);
-  loadAllData();
+  startAdminSession(data.session);
 });
 
 async function handleLogout() {
+  activeAdminId = null;
   await sb.auth.signOut();
   showLogin();
 }
@@ -109,10 +114,39 @@ const TAB_TITLES = {
 const FEATURE_LABELS = {
   food_scan: 'AI Food Scan (camera)',
   food_log: 'Food Logging',
+  food_camera_open: 'Food Camera Opened',
+  food_gallery_open: 'Food Gallery Opened',
+  food_search_open: 'Food Search Opened',
+  food_manual_open: 'Manual Food Entry Opened',
   workout_complete: 'Workout Completed',
+  workout_start: 'Workout Started',
+  workout_continue: 'Workout Continued',
+  workout_restart: 'Workout Restarted',
+  workout_select: 'Workout Selected',
+  workout_custom_start: 'Custom Workout Started',
   ai_chat_message: 'AI Coach Chat',
   diet_plan_generate: 'Diet Plan Generated',
+  diet_meal_complete: 'Diet Meal Completed',
+  diet_meal_remove: 'Diet Meal Removed',
   run_start: 'Run Tracker Started',
+  run_pause: 'Run Paused',
+  run_resume: 'Run Resumed',
+  run_finish: 'Run Finished',
+  run_save: 'Run Saved',
+  run_discard: 'Run Discarded',
+  run_share: 'Run Shared',
+  run_share_community: 'Run Shared to Community',
+  run_controls_lock: 'Run Controls Locked',
+  run_controls_unlock: 'Run Controls Unlocked',
+  run_audio_toggle: 'Run Audio Setting Changed',
+  run_auto_pause_toggle: 'Run Auto-Pause Changed',
+  profile_save: 'Profile Updated',
+  community_create: 'Community Created',
+  community_join: 'Community Joined',
+  community_post: 'Community Post Created',
+  community_like: 'Community Post Liked',
+  community_unlike: 'Community Post Unliked',
+  community_share_invite: 'Community Invite Shared',
 };
 const SCREEN_LABELS = {
   dashboard: 'Dashboard / Home',
@@ -143,9 +177,11 @@ function switchTab(tab) {
 
 // ── Data Loading ──────────────────────────────────────────────────────────────
 async function loadAllData() {
+  // The directory comes from a server-side Auth + profile join. Load it first
+  // so user totals and recent registrations use the same source of truth.
+  await loadUsers();
   await Promise.all([
     loadOverviewStats(),
-    loadUsers(),
     loadTickets(),
     loadFeedback(),
     loadAnnouncements(),
@@ -153,7 +189,66 @@ async function loadAllData() {
     loadPlansAndFeatures(),
     loadSubscriptionMode(),
     loadRevenue(),
+    loadCompliance(),
   ]);
+}
+
+// ── Compliance (REAL — computed from food_logs vs targets + workout_history) ──
+async function loadCompliance() {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10); // YYYY-MM-DD
+  const [{ data: profiles }, { data: foods }, { data: workouts }] = await Promise.all([
+    sb.from('profiles').select('id,daily_calories,daily_protein,daily_carbs,daily_fat'),
+    sb.from('food_logs').select('user_id,date,calories,protein,carbs,fat').gte('date', since),
+    sb.from('workout_history').select('user_id,date,completed'),
+  ]);
+
+  // Macro adherence: average of (eaten ÷ target, capped 100%) over each user-day with food
+  const tgt = {};
+  (profiles || []).forEach(p => { tgt[p.id] = p; });
+  const byUserDay = {};
+  (foods || []).forEach(f => {
+    const k = `${f.user_id}|${f.date}`;
+    const o = byUserDay[k] || (byUserDay[k] = { uid: f.user_id, cal: 0, p: 0, c: 0, ft: 0 });
+    o.cal += f.calories || 0; o.p += f.protein || 0; o.c += f.carbs || 0; o.ft += f.fat || 0;
+  });
+  let n = 0, sCal = 0, sP = 0, sC = 0, sF = 0;
+  const ratio = (eaten, target) => (target > 0 ? Math.min(100, (eaten / target) * 100) : 0);
+  Object.values(byUserDay).forEach(o => {
+    const t = tgt[o.uid]; if (!t) return;
+    sCal += ratio(o.cal, t.daily_calories); sP += ratio(o.p, t.daily_protein);
+    sC += ratio(o.c, t.daily_carbs); sF += ratio(o.ft, t.daily_fat); n++;
+  });
+  const avg = s => (n ? Math.round(s / n) : 0);
+  renderComplianceBars('macro-bars', [
+    { label: 'Protein Target', pct: avg(sP), color: '#CDFF3F' },
+    { label: 'Calorie Balance', pct: avg(sCal), color: '#7AD7FF' },
+    { label: 'Carb Targets', pct: avg(sC), color: '#FF9C38' },
+    { label: 'Fat Targets', pct: avg(sF), color: '#3FCEA4' },
+  ], n);
+
+  // Workout compliance: real completion + activity
+  const w = workouts || [];
+  const totalSessions = w.length;
+  const completionRate = totalSessions ? Math.round(w.filter(x => x.completed).length / totalSessions * 100) : 0;
+  const totalUsers = (profiles || []).length || 1;
+  const activeWeek = new Set(w.filter(x => (x.date || '') >= since).map(x => x.user_id)).size;
+  const everLogged = new Set(w.map(x => x.user_id)).size;
+  renderComplianceBars('workout-bars', [
+    { label: 'Workouts Completed', pct: completionRate, color: '#CDFF3F' },
+    { label: 'Active This Week', pct: Math.round(activeWeek / totalUsers * 100), color: '#3FCEA4' },
+    { label: 'Ever Logged a Workout', pct: Math.round(everLogged / totalUsers * 100), color: '#7AD7FF' },
+  ], totalSessions);
+}
+
+function renderComplianceBars(elId, rows, sampleCount) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!sampleCount) { el.innerHTML = '<div class="empty-state">No data logged yet.</div>'; return; }
+  el.innerHTML = rows.map(r => `
+    <div class="compliance-row">
+      <div class="compliance-label"><span>${r.label}</span><span class="compliance-pct" style="color:${r.color}">${r.pct}%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${r.pct}%;background:${r.color}"></div></div>
+    </div>`).join('');
 }
 
 // ── Master switch: subscription system Hidden / Live ─────────────────────
@@ -199,16 +294,15 @@ async function toggleSubscriptionMode() {
 async function loadOverviewStats() {
   // Pull the last 7 days of usage events once — powers real DAU + trend.
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const [{ data: profiles }, { data: workouts }, { count: chatCount }, { data: events }] = await Promise.all([
-    sb.from('profiles').select('id,goal,level,is_admin,is_suspended,name,created_at'),
+  const [{ data: workouts }, { count: chatCount }, { data: events }] = await Promise.all([
     sb.from('workout_history').select('completed'),
     sb.from('chat_messages').select('*', { count: 'exact', head: true }),
     sb.from('usage_events').select('user_id,created_at').gte('created_at', sevenDaysAgo),
   ]);
 
-  const total = profiles?.length || 0;
-  const newSignups = (profiles || []).filter(p => {
-    return (Date.now() - new Date(p.created_at)) < 7 * 24 * 60 * 60 * 1000;
+  const total = allUsers.length;
+  const newSignups = allUsers.filter(p => {
+    return (Date.now() - new Date(p.createdAt)) < 7 * 24 * 60 * 60 * 1000;
   }).length;
   const completed = (workouts || []).filter(w => w.completed).length;
   const completionRate = workouts?.length ? Math.round((completed / workouts.length) * 100) : 0;
@@ -233,7 +327,7 @@ async function loadOverviewStats() {
 
   // Goal chart
   const goalCounts = { bulk: 0, cut: 0, maintain: 0 };
-  (profiles || []).forEach(p => { if (goalCounts[p.goal] !== undefined) goalCounts[p.goal]++; });
+  allUsers.forEach(p => { if (goalCounts[p.goal] !== undefined) goalCounts[p.goal]++; });
   const goalColors = { bulk: '#CDFF3F', cut: '#7AD7FF', maintain: '#3FCEA4' };
   const goalLabels = { bulk: 'Bulk & Muscle Gain', cut: 'Fat Loss', maintain: 'Maintenance & Strength' };
   document.getElementById('goal-chart').innerHTML = Object.entries(goalCounts).map(([key, count]) => {
@@ -255,7 +349,7 @@ async function loadOverviewStats() {
   drawTrendChart(events || []);
 
   // Recent signups
-  const recent = [...(profiles || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6);
+  const recent = [...allUsers].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6);
   const chipColors = ['#CDFF3F','#7AD7FF','#3FCEA4','#FF9C38','#FF6161','#C084FC'];
   document.getElementById('recent-signups').innerHTML = recent.map((p, i) => `
     <div class="recent-item">
@@ -264,12 +358,12 @@ async function loadOverviewStats() {
         <div class="recent-name">${p.name || 'Anonymous'}</div>
         <div class="recent-sub">${goalLabels[p.goal] || p.goal || '—'} · ${p.level || '—'}</div>
       </div>
-      <div class="recent-meta">${timeAgo(p.created_at)}</div>
+      <div class="recent-meta">${timeAgo(p.createdAt)}</div>
     </div>
   `).join('');
 
   // Inactive users count (from allUsers if loaded)
-  updateInactiveList(profiles || []);
+  updateInactiveList(allUsers);
 }
 
 function drawTrendChart(events) {
@@ -321,43 +415,104 @@ function drawTrendChart(events) {
   ).join('');
 }
 
-// ── Feature Analytics ──────────────────────────────────────────────────────────
-// Answers: which features/screens get used most + how many users come back.
+// ── Product Usage Analytics ───────────────────────────────────────────────────
+// The API returns aggregates only. Raw chat messages, food details, GPS routes,
+// and other sensitive user content never enter this dashboard.
 async function loadAnalytics() {
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: events } = await sb
-    .from('usage_events')
-    .select('user_id,event_type,screen,feature,created_at')
-    .gte('created_at', since);
-  const ev = events || [];
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) throw new Error('Admin session expired.');
+    const response = await fetch(`${ADMIN_API_ORIGIN}/api/admin-analytics`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const analytics = await response.json();
+    if (!response.ok) throw new Error(analytics.error || 'Could not load analytics.');
+    renderProductAnalytics(analytics);
+  } catch (error) {
+    console.error('Could not load product analytics:', error);
+    ['feature-usage-list', 'screen-usage-list', 'screen-time-list', 'feature-retention-list', 'activity-history-list']
+      .forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<div class="empty-state">Analytics are temporarily unavailable.</div>';
+      });
+  }
+}
 
-  // Most-used features (explicit actions) and screens (page opens)
-  const featureCounts = {};
-  const screenCounts = {};
-  ev.forEach(e => {
-    if (e.event_type === 'feature_use' && e.feature) featureCounts[e.feature] = (featureCounts[e.feature] || 0) + 1;
-    if (e.event_type === 'screen_view' && e.screen) screenCounts[e.screen] = (screenCounts[e.screen] || 0) + 1;
-  });
+function renderProductAnalytics(analytics) {
+  const summary = analytics.summary || {};
+  const screenCounts = Object.fromEntries((analytics.screenUsage || []).map(row => [row.screen, row.views]));
+  const featureCounts = Object.fromEntries((analytics.featureUsage || []).map(row => [row.feature, row.count]));
   renderUsageBars('feature-usage-list', featureCounts, FEATURE_LABELS, '#CDFF3F');
   renderUsageBars('screen-usage-list', screenCounts, SCREEN_LABELS, '#7AD7FF');
+  renderScreenTime(analytics.screenUsage || []);
+  renderFeatureRetention(analytics.featureRetention || []);
+  renderUserActivityHistory(analytics.users || []);
 
-  // Retention / repeat customers: distinct active DAYS per user (last 30 days)
-  const userDays = {};
-  ev.forEach(e => {
-    const day = new Date(e.created_at).toDateString();
-    (userDays[e.user_id] = userDays[e.user_id] || new Set()).add(day);
-  });
-  const activeUsers = Object.keys(userDays).length;
-  const dayCounts = Object.values(userDays).map(s => s.size);
-  const repeatUsers = dayCounts.filter(n => n >= 2).length;  // returned on 2+ separate days
-  const loyalUsers  = dayCounts.filter(n => n >= 5).length;  // returned on 5+ separate days
-  const repeatPct = activeUsers ? Math.round((repeatUsers / activeUsers) * 100) : 0;
+  setText('analytics-dau', summary.dau || 0);
+  setText('analytics-wau', summary.wau || 0);
+  setText('analytics-mau', summary.mau || 0);
+  setText('analytics-total-time', formatDuration(summary.totalSeconds || 0));
+  setText('analytics-avg-session', formatDuration(summary.avgSessionSeconds || 0));
+  setText('analytics-repeat', summary.repeatUsers || 0);
+  setText('analytics-repeat-pct', summary.mau ? `${summary.repeatRate || 0}%` : '—');
+  setText('analytics-loyal', summary.powerUsers || 0);
+  setText('analytics-total-events', Number(summary.totalEvents || 0).toLocaleString('en-IN'));
+}
 
-  setText('analytics-active-30d', activeUsers);
-  setText('analytics-repeat', repeatUsers);
-  setText('analytics-repeat-pct', activeUsers ? repeatPct + '%' : '—');
-  setText('analytics-loyal', loyalUsers);
-  setText('analytics-total-events', ev.length.toLocaleString('en-IN'));
+function renderScreenTime(rows) {
+  const el = document.getElementById('screen-time-list');
+  if (!el) return;
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-state">Time tracking begins as users use the current release.</div>';
+    return;
+  }
+  const max = Math.max(...rows.map(row => row.seconds), 1);
+  el.innerHTML = rows.slice(0, 10).map(row => `
+    <div class="goal-row">
+      <div class="goal-row-header">
+        <span class="goal-label">${escapeHtml(SCREEN_LABELS[row.screen] || row.screen)}</span>
+        <span class="goal-pct" style="color:var(--orange)">${formatDuration(row.seconds)} <small class="goal-meta">${row.views} opens</small></span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${Math.max(2, Math.round((row.seconds / max) * 100))}%;background:var(--orange)"></div></div>
+    </div>`).join('');
+}
+
+function renderFeatureRetention(rows) {
+  const el = document.getElementById('feature-retention-list');
+  if (!el) return;
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-state">Feature retention appears after users return to a feature on another day.</div>';
+    return;
+  }
+  el.innerHTML = rows.slice(0, 10).map(row => `
+    <div class="analytics-row">
+      <span>${escapeHtml(FEATURE_LABELS[row.feature] || row.feature)}</span>
+      <b>${row.repeatRate}% repeat · ${row.users} users</b>
+    </div>`).join('');
+}
+
+function renderUserActivityHistory(rows) {
+  const el = document.getElementById('activity-history-list');
+  if (!el) return;
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-state">No recent user activity yet.</div>';
+    return;
+  }
+  const usersById = new Map(allUsers.map(user => [user.id, user]));
+  el.innerHTML = rows.slice(0, 20).map(row => {
+    const user = usersById.get(row.userId);
+    const name = user?.name || 'Unknown user';
+    const detail = [
+      `Last active ${timeAgo(row.lastActiveAt)}`,
+      `${row.activeDays} active days`,
+      formatDuration(row.totalSeconds),
+      row.mostUsedFeature ? (FEATURE_LABELS[row.mostUsedFeature] || row.mostUsedFeature) : 'No actions',
+    ].join(' · ');
+    return `<div class="analytics-user-row">
+      <div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(detail)}</span></div>
+      <div class="analytics-user-pages">${escapeHtml(SCREEN_LABELS[row.mostVisitedScreen] || row.mostVisitedScreen || 'No pages')}</div>
+    </div>`;
+  }).join('');
 }
 
 // Renders a ranked horizontal bar list into a container.
@@ -700,34 +855,18 @@ async function assignUserSubscription(userId, prefix) {
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 async function loadUsers() {
-  const { data: profiles, error } = await sb.from('profiles').select('*').order('created_at', { ascending: false });
-  if (error || !profiles) { allUsers = []; return; }
-
-  allUsers = profiles.map(p => ({
-    id: p.id,
-    name: p.name || 'Anonymous',
-    goal: p.goal || 'bulk',
-    level: p.level || 'beginner',
-    streak: p.streak || 0,
-    isAdmin: !!p.is_admin,
-    isSuspended: !!p.is_suspended,
-    createdAt: p.created_at,
-    age: p.age || '—',
-    gender: p.gender || '—',
-    height: p.height || '—',
-    currentWeight: p.current_weight || '—',
-    targetWeight: p.target_weight || '—',
-    equipment: p.equipment || '—',
-    daysPerWeek: p.days_per_week || '—',
-    dietType: p.diet_type || '—',
-    dailyCalories: p.daily_calories || '—',
-    dailyProtein: p.daily_protein || '—',
-    dailyCarbs: p.daily_carbs || '—',
-    dailyFat: p.daily_fat || '—',
-    phone: p.phone || '—',
-    city: p.city || '—',
-    state: p.state || '—',
-  }));
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.access_token) { allUsers = []; return; }
+  const response = await fetch(`${ADMIN_API_ORIGIN}/api/admin-users`, {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    allUsers = [];
+    console.error('Could not load the admin directory:', data.error || response.status);
+    return;
+  }
+  allUsers = data.users || [];
 
   const badge = document.getElementById('users-badge');
   badge.textContent = allUsers.length;
@@ -748,7 +887,7 @@ function applyFilters() {
     if (statF === 'active' && u.isSuspended) return false;
     if (statF === 'suspended' && !u.isSuspended) return false;
     if (statF === 'admin' && !u.isAdmin) return false;
-    if (search && !u.name.toLowerCase().includes(search) && !u.goal.toLowerCase().includes(search)) return false;
+    if (search && !`${u.name} ${u.email || ''} ${u.goal}`.toLowerCase().includes(search)) return false;
     return true;
   });
 
@@ -782,6 +921,7 @@ function renderUsersTable(users) {
           </div>
           <div>
             <div style="font-weight:700;color:var(--text-1)">${u.name}</div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:2px">${u.email || 'No email available'}</div>
             ${u.isAdmin ? '<span class="pill pill-accent" style="font-size:9px">ADMIN</span>' : ''}
           </div>
         </div>
@@ -838,7 +978,7 @@ function buildUserDetail(user, isDrawer) {
       <div class="detail-avatar" style="background:${chipColor}">${user.name[0].toUpperCase()}</div>
       <div>
         <div class="detail-name">${user.name}</div>
-        <div class="detail-since">Joined ${formatDate(user.createdAt)}</div>
+        <div class="detail-since">Registered ${formatDate(user.createdAt)}</div>
         <div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">
           ${user.isAdmin ? '<span class="pill pill-accent">ADMIN</span>' : ''}
           ${user.isSuspended ? '<span class="pill pill-red">SUSPENDED</span>' : '<span class="pill pill-green">ACTIVE</span>'}
@@ -849,6 +989,9 @@ function buildUserDetail(user, isDrawer) {
     <div>
       <div class="detail-section-title">Profile</div>
       <div class="detail-rows">
+        <div class="detail-row"><span class="detail-row-label">Email</span><span class="detail-row-val">${user.email || '—'}</span></div>
+        <div class="detail-row"><span class="detail-row-label">Email status</span><span class="detail-row-val">${user.emailConfirmedAt ? 'Confirmed' : 'Awaiting confirmation'}</span></div>
+        <div class="detail-row"><span class="detail-row-label">Last sign-in</span><span class="detail-row-val">${user.lastSignInAt ? formatDate(user.lastSignInAt) : 'Never'}</span></div>
         <div class="detail-row"><span class="detail-row-label">Goal</span><span class="detail-row-val">${GOAL_LABELS[user.goal] || user.goal}</span></div>
         <div class="detail-row"><span class="detail-row-label">Age / Gender</span><span class="detail-row-val">${user.age} y/o · ${user.gender}</span></div>
         <div class="detail-row"><span class="detail-row-label">Height</span><span class="detail-row-val">${user.height} cm</span></div>
@@ -861,6 +1004,13 @@ function buildUserDetail(user, isDrawer) {
         <div class="detail-row"><span class="detail-row-label">Macros (P/C/F)</span><span class="detail-row-val">${user.dailyProtein}g / ${user.dailyCarbs}g / ${user.dailyFat}g</span></div>
         <div class="detail-row"><span class="detail-row-label">Streak</span><span class="detail-row-val" style="color:var(--accent)">${user.streak} days 🔥</span></div>
         <div class="detail-row"><span class="detail-row-label">Location</span><span class="detail-row-val">${user.city}, ${user.state}</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="detail-section-title">Individual Analytics</div>
+      <div id="${prefix}-analytics-${user.id}" class="analytics-loading">
+        Loading secure usage analytics...
       </div>
     </div>
 
@@ -980,6 +1130,71 @@ async function loadUserLogs(userId, isDrawer = false) {
       `).join('');
     }
   }
+
+  loadUserAnalytics(userId, prefix);
+}
+
+async function loadUserAnalytics(userId, prefix) {
+  const container = document.getElementById(`${prefix}-analytics-${userId}`);
+  if (!container) return;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) throw new Error('Admin session expired.');
+    const response = await fetch(`${ADMIN_API_ORIGIN}/api/admin-user-analytics?userId=${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const analytics = await response.json();
+    if (!response.ok) throw new Error(analytics.error || 'Could not load analytics.');
+    renderUserAnalytics(container, analytics);
+  } catch (error) {
+    container.innerHTML = `<div class="empty-state" style="padding:8px">${escapeHtml(error.message || 'Analytics are unavailable.')}</div>`;
+  }
+}
+
+function renderUserAnalytics(container, analytics) {
+  const summary = analytics.summary || {};
+  const totals = analytics.totals || {};
+  const topScreens = (analytics.screenUsage || []).slice(0, 6);
+  const topFeatures = (analytics.featureUsage || []).slice(0, 6);
+  const recentDays = (analytics.activity || []).slice(0, 7);
+  const screenName = (key) => SCREEN_LABELS[key] || key || 'Unknown screen';
+  const featureName = (key) => FEATURE_LABELS[key] || key || 'No tracked actions';
+  const metric = (label, value) => `<div class="analytics-metric"><span>${label}</span><strong>${value}</strong></div>`;
+  const usageRows = topScreens.length
+    ? topScreens.map(item => `<div class="analytics-row"><span>${escapeHtml(screenName(item.key))}</span><b>${formatDuration(item.seconds)} · ${item.views} opens</b></div>`).join('')
+    : '<div class="empty-state" style="padding:4px">No page-use data yet.</div>';
+  const featureRows = topFeatures.length
+    ? topFeatures.map(item => `<div class="analytics-row"><span>${escapeHtml(featureName(item.key))}</span><b>${item.count}</b></div>`).join('')
+    : '<div class="empty-state" style="padding:4px">No actions recorded yet.</div>';
+  const dayRows = recentDays.length
+    ? recentDays.map(day => `<div class="analytics-row"><span>${formatShortDate(day.date)}</span><b>${day.events} events · ${formatDuration(day.seconds)}</b></div>`).join('')
+    : '<div class="empty-state" style="padding:4px">No activity history yet.</div>';
+
+  container.innerHTML = `
+    <div class="analytics-metrics">
+      ${metric('Last active', summary.lastActiveAt ? timeAgo(summary.lastActiveAt) : 'Never')}
+      ${metric('Active time', formatDuration(summary.totalSeconds || 0))}
+      ${metric('Sessions', summary.totalSessions || 0)}
+      ${metric('Avg. session', formatDuration(summary.avgSessionSeconds || 0))}
+      ${metric('Active days', summary.activeDays || 0)}
+      ${metric('Top feature', escapeHtml(featureName(summary.mostUsedFeature?.key)))}
+    </div>
+    <div class="analytics-highlight">
+      <span>Most opened page</span><strong>${escapeHtml(screenName(summary.mostVisitedScreen?.key))}</strong>
+    </div>
+    <div class="analytics-subtitle">Time by section</div>
+    <div class="analytics-list">${usageRows}</div>
+    <div class="analytics-subtitle">Most-used actions</div>
+    <div class="analytics-list">${featureRows}</div>
+    <div class="analytics-subtitle">Last 7 active days</div>
+    <div class="analytics-list">${dayRows}</div>
+    <div class="analytics-totals">
+      ${metric('Food logs', totals.foodLogs || 0)}
+      ${metric('Workouts', `${totals.completedWorkouts || 0}/${totals.workouts || 0}`)}
+      ${metric('Runs', `${totals.runs || 0} · ${Number(totals.runKm || 0).toFixed(1)} km`)}
+      ${metric('Coach messages', totals.chatMessages || 0)}
+    </div>
+  `;
 }
 
 // ── User Moderation ───────────────────────────────────────────────────────────
@@ -1233,6 +1448,27 @@ function timeAgo(dateStr) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
+}
+
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  if (!total) return '—';
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m`;
+  return `${total}s`;
+}
+
+function formatShortDate(dateStr) {
+  if (!dateStr) return '—';
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+  })[char]);
 }
 
 // ── SVG Icons ─────────────────────────────────────────────────────────────────

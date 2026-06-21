@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="faujii-api-origin" content="https://faujii.vercel.app" />
   <title>Faujii Admin — System Management Console</title>
   <meta name="description" content="Faujii Admin Dashboard — Manage trainees, monitor compliance, handle support tickets and dispatch announcements." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -229,21 +230,41 @@
       <!-- Panel: Compliance -->
       <!-- Panel: Feature Analytics -->
       <section class="tab-panel" id="panel-analytics">
-        <div class="stats-grid">
+        <div class="stats-grid analytics-stats-grid">
           <div class="stat-card">
-            <div class="stat-label">Active Users (30d)</div>
-            <div class="stat-value" id="analytics-active-30d" style="color:#7AD7FF">0</div>
+            <div class="stat-label">Daily Active Users</div>
+            <div class="stat-value" id="analytics-dau" style="color:#7AD7FF">0</div>
+            <div class="stat-sub">Used the app today</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Weekly Active Users</div>
+            <div class="stat-value" id="analytics-wau" style="color:#CDFF3F">0</div>
+            <div class="stat-sub">Used the app in last 7 days</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Monthly Active Users</div>
+            <div class="stat-value" id="analytics-mau" style="color:#3FCEA4">0</div>
             <div class="stat-sub">Used the app in last 30 days</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Repeat Customers</div>
+            <div class="stat-label">Total Active Time</div>
+            <div class="stat-value" id="analytics-total-time" style="color:#FF9C38">—</div>
+            <div class="stat-sub">Across all users in 30 days</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Average Session</div>
+            <div class="stat-value" id="analytics-avg-session" style="color:#C084FC">—</div>
+            <div class="stat-sub">Active time per session</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Repeat Users</div>
             <div class="stat-value" id="analytics-repeat" style="color:#CDFF3F">0</div>
             <div class="stat-sub">Returned on 2+ separate days</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Repeat Rate</div>
             <div class="stat-value" id="analytics-repeat-pct" style="color:#3FCEA4">—</div>
-            <div class="stat-sub">Of active users</div>
+            <div class="stat-sub">Of monthly active users</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Power Users</div>
@@ -269,9 +290,23 @@
             </div>
           </div>
         </div>
+        <div class="grid-2col" style="margin-top:16px">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Time Spent by Page</h3><span class="card-badge">30 days</span></div>
+            <div id="screen-time-list" class="goal-chart-wrap"><div class="empty-state">Loading time analytics...</div></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Feature Retention</h3><span class="card-badge">Repeat usage</span></div>
+            <div id="feature-retention-list" class="analytics-list"><div class="empty-state">Loading retention analytics...</div></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><h3 class="card-title">User Activity History</h3><span class="card-badge">Last 30 days</span></div>
+          <div id="activity-history-list" class="analytics-user-list"><div class="empty-state">Loading user activity...</div></div>
+        </div>
         <div class="staged-banner" style="margin-top:20px">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h7v8l10-12h-7z"/></svg>
-          <span>This data powers your pricing decisions — features used most are your strongest candidates for a paid tier. Numbers reflect the last 30 days.</span>
+          <span>Use time, repeat use, and retention together before pricing a feature. Session and page-time metrics begin collecting from the current app release.</span>
         </div>
       </section>
 
@@ -363,42 +398,12 @@
       <section class="tab-panel" id="panel-compliance">
         <div class="grid-2col">
           <div class="card">
-            <div class="card-header"><h3 class="card-title">Macro Adherence</h3></div>
-            <div class="compliance-bars" id="compliance-bars">
-              <div class="compliance-row">
-                <div class="compliance-label"><span>Protein Target</span><span class="compliance-pct" style="color:#CDFF3F">82%</span></div>
-                <div class="progress-bar"><div class="progress-fill" style="width:82%;background:#CDFF3F"></div></div>
-              </div>
-              <div class="compliance-row">
-                <div class="compliance-label"><span>Calorie Balance</span><span class="compliance-pct" style="color:#7AD7FF">90%</span></div>
-                <div class="progress-bar"><div class="progress-fill" style="width:90%;background:#7AD7FF"></div></div>
-              </div>
-              <div class="compliance-row">
-                <div class="compliance-label"><span>Carb Targets</span><span class="compliance-pct" style="color:#FF9C38">71%</span></div>
-                <div class="progress-bar"><div class="progress-fill" style="width:71%;background:#FF9C38"></div></div>
-              </div>
-              <div class="compliance-row">
-                <div class="compliance-label"><span>Fat Targets</span><span class="compliance-pct" style="color:#3FCEA4">68%</span></div>
-                <div class="progress-bar"><div class="progress-fill" style="width:68%;background:#3FCEA4"></div></div>
-              </div>
-            </div>
+            <div class="card-header"><h3 class="card-title">Macro Adherence</h3><span class="card-badge">last 7 days</span></div>
+            <div class="compliance-bars" id="macro-bars"><div class="empty-state">Loading…</div></div>
           </div>
           <div class="card">
             <div class="card-header"><h3 class="card-title">Workout Compliance</h3></div>
-            <div class="compliance-bars">
-              <div class="compliance-row">
-                <div class="compliance-label"><span>Sets Completed</span><span class="compliance-pct" style="color:#CDFF3F">76%</span></div>
-                <div class="progress-bar"><div class="progress-fill" style="width:76%;background:#CDFF3F"></div></div>
-              </div>
-              <div class="compliance-row">
-                <div class="compliance-label"><span>Weekly Frequency</span><span class="compliance-pct" style="color:#3FCEA4">83%</span></div>
-                <div class="progress-bar"><div class="progress-fill" style="width:83%;background:#3FCEA4"></div></div>
-              </div>
-              <div class="compliance-row">
-                <div class="compliance-label"><span>Full Workout Days</span><span class="compliance-pct" style="color:#7AD7FF">61%</span></div>
-                <div class="progress-bar"><div class="progress-fill" style="width:61%;background:#7AD7FF"></div></div>
-              </div>
-            </div>
+            <div class="compliance-bars" id="workout-bars"><div class="empty-state">Loading…</div></div>
           </div>
         </div>
 

@@ -231,6 +231,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text-1); overflow
 
 /* ── Stats Grid ──────────────────────────────────────────────────────────────── */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.analytics-stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .stat-card {
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 20px; position: relative; overflow: hidden;
@@ -382,6 +383,30 @@ html, body { height: 100%; background: var(--bg); color: var(--text-1); overflow
 .log-name { color: var(--text-2); }
 .log-val { font-weight: 600; color: var(--text-1); }
 
+/* ── Individual User Analytics ───────────────────────────────────────────── */
+.analytics-loading { color: var(--text-3); font-size: 12px; padding: 8px 0; }
+.analytics-metrics, .analytics-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.analytics-metric { min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: 7px; }
+.analytics-metric span { color: var(--text-3); font-size: 10px; font-weight: 700; letter-spacing: 0.35px; text-transform: uppercase; }
+.analytics-metric strong { overflow: hidden; color: var(--text-1); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.analytics-highlight { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; padding: 8px; border-left: 2px solid var(--accent); background: var(--accent-dim); }
+.analytics-highlight span, .analytics-subtitle { color: var(--text-3); font-size: 10px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase; }
+.analytics-highlight strong { color: var(--accent); font-size: 12px; }
+.analytics-subtitle { margin: 12px 0 5px; }
+.analytics-list { display: flex; flex-direction: column; gap: 4px; }
+.analytics-row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--border); color: var(--text-2); font-size: 11.5px; }
+.analytics-row:last-child { border-bottom: none; }
+.analytics-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.analytics-row b { flex-shrink: 0; color: var(--text-1); font-size: 11px; }
+.analytics-totals { margin-top: 10px; }
+.analytics-user-list { display: flex; flex-direction: column; }
+.analytics-user-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+.analytics-user-row:last-child { border-bottom: none; }
+.analytics-user-row > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.analytics-user-row strong { color: var(--text-1); font-size: 13px; }
+.analytics-user-row span { overflow: hidden; color: var(--text-3); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.analytics-user-pages { max-width: 180px; color: var(--blue); font-size: 11.5px; font-weight: 700; text-align: right; }
+
 /* ── Compliance ──────────────────────────────────────────────────────────────── */
 .compliance-bars { display: flex; flex-direction: column; gap: 18px; }
 .compliance-row { display: flex; flex-direction: column; gap: 8px; }
@@ -470,6 +495,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text-1); overflow
 
 /* ── Responsive ──────────────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
+  .analytics-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .users-layout { grid-template-columns: 1fr; }
   .user-detail-col { display: none; }
@@ -503,3 +529,56 @@ html, body { height: 100%; background: var(--bg); color: var(--text-1); overflow
   border-radius: 10px;
 }
 @media (max-width: 680px) { .feat-check-grid { grid-template-columns: 1fr; } }
+
+/* ── User Detail Drawer (View button) — was missing, made the drawer invisible ── */
+.detail-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+}
+.detail-drawer.hidden { display: none !important; }
+.drawer-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+.drawer-panel {
+  position: relative;
+  width: min(460px, 94vw);
+  height: 100%;
+  margin-left: auto;
+  background: #141414;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: -16px 0 50px rgba(0, 0, 0, 0.55);
+  overflow-y: auto;
+  padding: 22px;
+  animation: drawerSlideIn 0.24s ease;
+}
+@keyframes drawerSlideIn {
+  from { transform: translateX(40px); opacity: 0.4; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.drawer-title { font-size: 18px; font-weight: 800; color: #F4F5F0; margin: 0; }
+.drawer-close {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #C8C8C2;
+  font-size: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.drawer-close:hover { background: rgba(255, 255, 255, 0.12); }
+.drawer-body { display: flex; flex-direction: column; gap: 18px; }
