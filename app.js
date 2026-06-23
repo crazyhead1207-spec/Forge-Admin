@@ -15,16 +15,107 @@ let editingPlanId = null; // plan currently being edited (null = creating new)
 let selectedUserId = null;
 let ticketFilter = 'all';
 let activeAdminId = null;
+let loginScreenMode = 'signin'; // 'signin', 'forgot', 'recovery'
+let isRecoverySession = false;
+
+// ── Auth Helpers ─────────────────────────────────────────────────────────────
+function showLoginMessage(text, isSuccess = false) {
+  const errEl = document.getElementById('login-error');
+  if (!errEl) return;
+  errEl.textContent = text;
+  errEl.classList.remove('hidden');
+  if (isSuccess) {
+    errEl.style.background = 'rgba(63,206,164,0.1)';
+    errEl.style.borderColor = 'rgba(63,206,164,0.25)';
+    errEl.style.color = 'var(--green)';
+  } else {
+    errEl.style.background = '';
+    errEl.style.borderColor = '';
+    errEl.style.color = '';
+  }
+}
+
+function setLoginScreenMode(mode) {
+  loginScreenMode = mode;
+  
+  const titleEl = document.querySelector('.login-title');
+  const descEl = document.querySelector('.login-desc');
+  const emailGroup = document.getElementById('login-email-group');
+  const passwordGroup = document.getElementById('login-password-group');
+  const recoveryGroup1 = document.getElementById('recovery-password-1-group');
+  const recoveryGroup2 = document.getElementById('recovery-password-2-group');
+  const btnText = document.getElementById('login-btn-text');
+  const backToLoginWrap = document.getElementById('back-to-login-wrap');
+  
+  // Reset message box
+  const errEl = document.getElementById('login-error');
+  if (errEl) {
+    errEl.classList.add('hidden');
+    errEl.style.background = '';
+    errEl.style.borderColor = '';
+    errEl.style.color = '';
+  }
+
+  // Get inputs to manage validation attributes dynamically
+  const emailInput = document.getElementById('login-email');
+  const passwordInput = document.getElementById('login-password');
+  const recoveryInput1 = document.getElementById('recovery-password-1');
+  const recoveryInput2 = document.getElementById('recovery-password-2');
+
+  if (mode === 'signin') {
+    if (titleEl) titleEl.textContent = 'Sign In to Admin';
+    if (descEl) descEl.textContent = 'Access restricted to authorized personnel only.';
+    if (emailGroup) emailGroup.classList.remove('hidden');
+    if (passwordGroup) passwordGroup.classList.remove('hidden');
+    if (recoveryGroup1) recoveryGroup1.classList.add('hidden');
+    if (recoveryGroup2) recoveryGroup2.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Access Dashboard';
+    if (backToLoginWrap) backToLoginWrap.classList.add('hidden');
+    
+    if (emailInput) emailInput.required = true;
+    if (passwordInput) passwordInput.required = true;
+    if (recoveryInput1) { recoveryInput1.required = false; recoveryInput1.value = ''; }
+    if (recoveryInput2) { recoveryInput2.required = false; recoveryInput2.value = ''; }
+  } else if (mode === 'forgot') {
+    if (titleEl) titleEl.textContent = 'Reset Admin Password';
+    if (descEl) descEl.textContent = 'Enter your email address to receive a password reset link.';
+    if (emailGroup) emailGroup.classList.remove('hidden');
+    if (passwordGroup) passwordGroup.classList.add('hidden');
+    if (recoveryGroup1) recoveryGroup1.classList.add('hidden');
+    if (recoveryGroup2) recoveryGroup2.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Send Reset Link';
+    if (backToLoginWrap) backToLoginWrap.classList.remove('hidden');
+    
+    if (emailInput) emailInput.required = true;
+    if (passwordInput) passwordInput.required = false;
+    if (recoveryInput1) { recoveryInput1.required = false; recoveryInput1.value = ''; }
+    if (recoveryInput2) { recoveryInput2.required = false; recoveryInput2.value = ''; }
+  } else if (mode === 'recovery') {
+    if (titleEl) titleEl.textContent = 'Create New Password';
+    if (descEl) descEl.textContent = 'Please enter your new administrator password below.';
+    if (emailGroup) emailGroup.classList.add('hidden');
+    if (passwordGroup) passwordGroup.classList.add('hidden');
+    if (recoveryGroup1) recoveryGroup1.classList.remove('hidden');
+    if (recoveryGroup2) recoveryGroup2.classList.remove('hidden');
+    if (btnText) btnText.textContent = 'Update Password';
+    if (backToLoginWrap) backToLoginWrap.classList.add('hidden');
+    
+    if (emailInput) emailInput.required = false;
+    if (passwordInput) passwordInput.required = false;
+    if (recoveryInput1) { recoveryInput1.required = true; recoveryInput1.value = ''; }
+    if (recoveryInput2) { recoveryInput2.required = true; recoveryInput2.value = ''; }
+  }
+}
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 async function startAdminSession(session) {
+  if (isRecoverySession) return;
   if (!session) { activeAdminId = null; showLogin(); return; }
   if (activeAdminId === session.user.id) return;
   const { data: profile } = await sb.from('profiles').select('is_admin').eq('id', session.user.id).single();
   if (!profile?.is_admin) {
     await sb.auth.signOut();
-    document.getElementById('login-error').textContent = 'Access denied. This account does not have admin privileges.';
-    document.getElementById('login-error').classList.remove('hidden');
+    showLoginMessage('Access denied. This account does not have admin privileges.', false);
     return;
   }
   activeAdminId = session.user.id;
@@ -32,22 +123,44 @@ async function startAdminSession(session) {
   loadAllData();
 }
 
-sb.auth.onAuthStateChange((_event, session) => { startAdminSession(session); });
-
-sb.auth.getSession().then(({ data: { session } }) => {
-  startAdminSession(session);
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    isRecoverySession = true;
+    showLogin();
+    setLoginScreenMode('recovery');
+  } else if (!isRecoverySession) {
+    startAdminSession(session);
+  }
 });
 
-document.getElementById('login-form').addEventListener('submit', async (e) => {
+sb.auth.getSession().then(({ data: { session } }) => {
+  const hash = window.location.hash || '';
+  if (hash.includes('type=recovery') || hash.includes('recovery')) {
+    isRecoverySession = true;
+    showLogin();
+    setLoginScreenMode('recovery');
+  } else {
+    startAdminSession(session);
+  }
+});
+
+document.getElementById('forgot-password-link').addEventListener('click', (e) => {
   e.preventDefault();
+  setLoginScreenMode('forgot');
+});
+
+document.getElementById('back-to-login-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  setLoginScreenMode('signin');
+});
+
+async function handleSignInSubmit() {
   const email = document.getElementById('login-email').value.trim();
   const pass  = document.getElementById('login-password').value;
-  const errEl = document.getElementById('login-error');
   const btn   = document.getElementById('login-btn');
   const spinner = document.getElementById('login-spinner');
   const btnText = document.getElementById('login-btn-text');
 
-  errEl.classList.add('hidden');
   btn.disabled = true;
   spinner.classList.remove('hidden');
   btnText.textContent = 'Signing in...';
@@ -55,8 +168,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
 
   if (error) {
-    errEl.textContent = error.message;
-    errEl.classList.remove('hidden');
+    showLoginMessage(error.message, false);
     btn.disabled = false;
     spinner.classList.add('hidden');
     btnText.textContent = 'Access Dashboard';
@@ -67,19 +179,107 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   const { data: profile } = await sb.from('profiles').select('is_admin').eq('id', data.user.id).single();
   if (!profile?.is_admin) {
     await sb.auth.signOut();
-    errEl.textContent = 'Access denied. This account does not have admin privileges.';
-    errEl.classList.remove('hidden');
+    showLoginMessage('Access denied. This account does not have admin privileges.', false);
     btn.disabled = false;
     spinner.classList.add('hidden');
     btnText.textContent = 'Access Dashboard';
     return;
   }
 
+  btn.disabled = false;
+  spinner.classList.add('hidden');
+  btnText.textContent = 'Access Dashboard';
   startAdminSession(data.session);
+}
+
+async function handleForgotPasswordSubmit() {
+  const email = document.getElementById('login-email').value.trim();
+  const btn = document.getElementById('login-btn');
+  const spinner = document.getElementById('login-spinner');
+  const btnText = document.getElementById('login-btn-text');
+
+  btn.disabled = true;
+  spinner.classList.remove('hidden');
+  btnText.textContent = 'Sending...';
+
+  const redirectUrl = window.location.origin + window.location.pathname;
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: redirectUrl
+  });
+
+  btn.disabled = false;
+  spinner.classList.add('hidden');
+  btnText.textContent = 'Send Reset Link';
+
+  if (error) {
+    showLoginMessage(error.message, false);
+    return;
+  }
+
+  showLoginMessage('Password reset link sent! Check your email.', true);
+}
+
+async function handlePasswordRecoverySubmit() {
+  const p1 = document.getElementById('recovery-password-1').value;
+  const p2 = document.getElementById('recovery-password-2').value;
+  const btn = document.getElementById('login-btn');
+  const spinner = document.getElementById('login-spinner');
+  const btnText = document.getElementById('login-btn-text');
+
+  if (p1.length < 8) {
+    showLoginMessage('Password must be at least 8 characters.', false);
+    return;
+  }
+  if (p1 !== p2) {
+    showLoginMessage('Passwords do not match.', false);
+    return;
+  }
+
+  btn.disabled = true;
+  spinner.classList.remove('hidden');
+  btnText.textContent = 'Updating...';
+
+  const { error } = await sb.auth.updateUser({ password: p1 });
+
+  btn.disabled = false;
+  spinner.classList.add('hidden');
+  btnText.textContent = 'Update Password';
+
+  if (error) {
+    showLoginMessage(error.message, false);
+    return;
+  }
+
+  showLoginMessage('Password updated successfully! Redirecting to dashboard...', true);
+  
+  isRecoverySession = false;
+  
+  // Wait 1.5s to let the user see the success message, then transition to dashboard
+  setTimeout(async () => {
+    if (window.history.replaceState) {
+      window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    }
+    const { data: { session } } = await sb.auth.getSession();
+    setLoginScreenMode('signin');
+    startAdminSession(session);
+  }, 1500);
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (loginScreenMode === 'signin') {
+    await handleSignInSubmit();
+  } else if (loginScreenMode === 'forgot') {
+    await handleForgotPasswordSubmit();
+  } else if (loginScreenMode === 'recovery') {
+    await handlePasswordRecoverySubmit();
+  }
 });
 
 async function handleLogout() {
   activeAdminId = null;
+  isRecoverySession = false;
+  setLoginScreenMode('signin');
   await sb.auth.signOut();
   showLogin();
 }
