@@ -18,6 +18,78 @@ let activeAdminId = null;
 let loginScreenMode = 'signin'; // 'signin', 'forgot', 'recovery'
 let isRecoverySession = false;
 
+// ── Custom Modal Helpers ──────────────────────────────────────────────────────
+function showCustomModal({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', isAlert = false, isWarning = false }) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('custom-modal');
+    const titleEl = document.getElementById('custom-modal-title');
+    const messageEl = document.getElementById('custom-modal-message');
+    const cancelBtn = document.getElementById('custom-modal-cancel-btn');
+    const confirmBtn = document.getElementById('custom-modal-confirm-btn');
+
+    if (!modal || !titleEl || !messageEl || !cancelBtn || !confirmBtn) {
+      if (isAlert) {
+        alert(message);
+        resolve(true);
+      } else {
+        resolve(confirm(message));
+      }
+      return;
+    }
+
+    titleEl.textContent = title;
+    messageEl.innerHTML = message.replace(/\n/g, '<br>');
+    confirmBtn.textContent = confirmText;
+    
+    if (isAlert) {
+      cancelBtn.classList.add('hidden');
+    } else {
+      cancelBtn.classList.remove('hidden');
+      cancelBtn.textContent = cancelText;
+    }
+
+    confirmBtn.className = isWarning ? 'custom-modal-btn-danger' : 'custom-modal-btn-confirm';
+
+    modal.classList.remove('hidden');
+
+    function cleanup(value) {
+      modal.classList.add('hidden');
+      confirmBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+      document.removeEventListener('keydown', onKeyDown);
+      resolve(value);
+    }
+
+    function onConfirm() {
+      cleanup(true);
+    }
+
+    function onCancel() {
+      cleanup(false);
+    }
+
+    function onKeyDown(e) {
+      if (e.key === 'Escape' && !isAlert) {
+        cleanup(false);
+      } else if (e.key === 'Enter') {
+        cleanup(true);
+      }
+    }
+
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+    document.addEventListener('keydown', onKeyDown);
+  });
+}
+
+function showCustomAlert(title, message) {
+  return showCustomModal({ title, message, confirmText: 'OK', isAlert: true });
+}
+
+function showCustomConfirm(title, message, isWarning = false, confirmText = 'Confirm') {
+  return showCustomModal({ title, message, isWarning, confirmText, isAlert: false });
+}
+
 // ── Auth Helpers ─────────────────────────────────────────────────────────────
 function showLoginMessage(text, isSuccess = false) {
   const errEl = document.getElementById('login-error');
@@ -425,7 +497,7 @@ async function changeAdminPassword() {
 }
 
 async function signOutEverywhere() {
-  if (!confirm('Sign out of ALL devices? You will need to log in again.')) return;
+  if (!(await showCustomConfirm('Sign Out', 'Sign out of ALL devices? You will need to log in again.', true, 'Sign Out'))) return;
   await sb.auth.signOut({ scope: 'global' });
   showLogin();
 }
@@ -537,10 +609,10 @@ function renderSubscriptionMode() {
 
 async function toggleSubscriptionMode() {
   const next = subscriptionMode === 'live' ? 'hidden' : 'live';
-  if (next === 'live' && !confirm('Go LIVE?\n\nUsers will start seeing subscription plans and paid features will be gated according to their plan. Make sure you have created your plans first.')) return;
+  if (next === 'live' && !(await showCustomConfirm('Go LIVE?', 'Users will start seeing subscription plans and paid features will be gated according to their plan. Make sure you have created your plans first.', false, 'Go Live'))) return;
   const { error } = await sb.from('app_config')
     .upsert({ key: 'subscription_mode', value: next, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-  if (error) { alert('Could not change mode: ' + error.message); return; }
+  if (error) { await showCustomAlert('Error', 'Could not change mode: ' + error.message); return; }
   subscriptionMode = next;
   renderSubscriptionMode();
 }
@@ -959,7 +1031,7 @@ async function addFeature(e) {
   const isFree = document.getElementById('feat-free').checked;
   if (!name || !key) return;
   const { error } = await sb.from('features').insert({ name, key, is_free: isFree, sort_order: allFeatures.length + 1 });
-  if (error) { alert('Could not add feature: ' + error.message); return; }
+  if (error) { await showCustomAlert('Error', 'Could not add feature: ' + error.message); return; }
   document.getElementById('feat-name').value = '';
   document.getElementById('feat-key').value = '';
   loadPlansAndFeatures();
@@ -1047,18 +1119,18 @@ async function savePlan(e) {
     price_yearly: parseInt(document.getElementById('plan-yearly').value || '0', 10),
     is_active: document.getElementById('plan-active').checked,
   };
-  if (!payload.name) { alert('Please enter a plan name.'); return; }
+  if (!payload.name) { await showCustomAlert('Validation Error', 'Please enter a plan name.'); return; }
   const selectedFeatureIds = [...document.querySelectorAll('.plan-feat-cb:checked')].map(cb => cb.value);
 
   let planId = editingPlanId;
   if (editingPlanId) {
     payload.updated_at = new Date().toISOString();
     const { error } = await sb.from('subscription_plans').update(payload).eq('id', editingPlanId);
-    if (error) { alert('Could not save plan: ' + error.message); return; }
+    if (error) { await showCustomAlert('Error', 'Could not save plan: ' + error.message); return; }
   } else {
     payload.sort_order = allPlans.length + 1;
     const { data, error } = await sb.from('subscription_plans').insert(payload).select('id').single();
-    if (error) { alert('Could not create plan: ' + error.message); return; }
+    if (error) { await showCustomAlert('Error', 'Could not create plan: ' + error.message); return; }
     planId = data.id;
   }
 
@@ -1080,7 +1152,7 @@ async function togglePlanActive(planId, currentlyActive) {
 }
 
 async function deletePlan(planId, name) {
-  if (!confirm(`Delete the plan "${name}"?\n\nUsers currently on it will fall back to free access. This cannot be undone.`)) return;
+  if (!(await showCustomConfirm('Delete Plan', `Delete the plan "${name}"?\n\nUsers currently on it will fall back to free access. This cannot be undone.`, true, 'Delete'))) return;
   const { error } = await sb.from('subscription_plans').delete().eq('id', planId);
   if (!error) { loadPlansAndFeatures(); loadRevenue(); }
 }
@@ -1102,7 +1174,7 @@ async function assignUserSubscription(userId, prefix) {
   };
   // Upsert by user_id (one subscription row per user)
   const { error } = await sb.from('subscriptions').upsert(row, { onConflict: 'user_id' });
-  if (error) { alert('Could not save subscription: ' + error.message); return; }
+  if (error) { await showCustomAlert('Error', 'Could not save subscription: ' + error.message); return; }
   loadUserLogs(userId, prefix === 'drw');
   loadRevenue();
   loadRevenuePlanMix();
@@ -1474,7 +1546,7 @@ async function toggleAdmin(userId, currentStatus) {
 }
 
 async function confirmDeleteUser(userId, name) {
-  if (!confirm(`Are you absolutely sure you want to PERMANENTLY DELETE "${name}"?\n\nAll their data (workouts, food logs, profile) will be erased and cannot be recovered.`)) return;
+  if (!(await showCustomConfirm('Delete Trainee Profile', `Are you absolutely sure you want to PERMANENTLY DELETE "${name}"?\n\nAll their data (workouts, food logs, profile) will be erased and cannot be recovered.`, true, 'Delete Profile'))) return;
   const { error } = await sb.from('profiles').delete().eq('id', userId);
   if (!error) {
     allUsers = allUsers.filter(u => u.id !== userId);
