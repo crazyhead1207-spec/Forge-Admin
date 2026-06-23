@@ -609,7 +609,11 @@ function renderSubscriptionMode() {
 
 async function toggleSubscriptionMode() {
   const next = subscriptionMode === 'live' ? 'hidden' : 'live';
-  if (next === 'live' && !(await showCustomConfirm('Go LIVE?', 'Users will start seeing subscription plans and paid features will be gated according to their plan. Make sure you have created your plans first.', false, 'Go Live'))) return;
+  if (next === 'live') {
+    if (!(await showCustomConfirm('Go LIVE?', 'Users will start seeing subscription plans and paid features will be gated according to their plan. Make sure you have created your plans first.', false, 'Go Live'))) return;
+  } else {
+    if (!(await showCustomConfirm('Switch to Hidden?', 'Users will see NO subscription, pricing, upgrade or payment screens. The app will be fully free again.', true, 'Switch to Hidden'))) return;
+  }
   const { error } = await sb.from('app_config')
     .upsert({ key: 'subscription_mode', value: next, updated_at: new Date().toISOString() }, { onConflict: 'key' });
   if (error) { await showCustomAlert('Error', 'Could not change mode: ' + error.message); return; }
