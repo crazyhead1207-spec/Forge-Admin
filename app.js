@@ -46,6 +46,7 @@ function setLoginScreenMode(mode) {
   const recoveryGroup2 = document.getElementById('recovery-password-2-group');
   const btnText = document.getElementById('login-btn-text');
   const backToLoginWrap = document.getElementById('back-to-login-wrap');
+  const forgotPasswordWrap = document.getElementById('forgot-password-wrap');
   
   // Reset message box
   const errEl = document.getElementById('login-error');
@@ -71,6 +72,7 @@ function setLoginScreenMode(mode) {
     if (recoveryGroup2) recoveryGroup2.classList.add('hidden');
     if (btnText) btnText.textContent = 'Access Dashboard';
     if (backToLoginWrap) backToLoginWrap.classList.add('hidden');
+    if (forgotPasswordWrap) forgotPasswordWrap.classList.remove('hidden');
     
     if (emailInput) emailInput.required = true;
     if (passwordInput) passwordInput.required = true;
@@ -85,6 +87,7 @@ function setLoginScreenMode(mode) {
     if (recoveryGroup2) recoveryGroup2.classList.add('hidden');
     if (btnText) btnText.textContent = 'Send Reset Link';
     if (backToLoginWrap) backToLoginWrap.classList.remove('hidden');
+    if (forgotPasswordWrap) forgotPasswordWrap.classList.add('hidden');
     
     if (emailInput) emailInput.required = true;
     if (passwordInput) passwordInput.required = false;
@@ -99,6 +102,7 @@ function setLoginScreenMode(mode) {
     if (recoveryGroup2) recoveryGroup2.classList.remove('hidden');
     if (btnText) btnText.textContent = 'Update Password';
     if (backToLoginWrap) backToLoginWrap.classList.add('hidden');
+    if (forgotPasswordWrap) forgotPasswordWrap.classList.add('hidden');
     
     if (emailInput) emailInput.required = false;
     if (passwordInput) passwordInput.required = false;

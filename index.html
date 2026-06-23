@@ -29,10 +29,7 @@
             <input type="email" id="login-email" class="field-input" placeholder="admin@faujii.com" required />
           </div>
           <div class="field-group" id="login-password-group">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <label class="field-label" style="margin-bottom:0;">Password</label>
-              <a href="#" id="forgot-password-link" style="color:var(--accent);font-size:11px;text-decoration:none;font-weight:600;">Forgot Password?</a>
-            </div>
+            <label class="field-label">Password</label>
             <input type="password" id="login-password" class="field-input" placeholder="••••••••" required />
           </div>
           <div class="field-group hidden" id="recovery-password-1-group">
@@ -48,6 +45,9 @@
             <span id="login-btn-text">Access Dashboard</span>
             <div id="login-spinner" class="btn-spinner hidden"></div>
           </button>
+          <div id="forgot-password-wrap" style="text-align:center;margin-top:16px;">
+            <a href="#" id="forgot-password-link" style="color:var(--accent);font-size:12.5px;text-decoration:none;font-weight:600;">Forgot Password?</a>
+          </div>
           <div id="back-to-login-wrap" class="hidden" style="text-align:center;margin-top:16px;">
             <a href="#" id="back-to-login-link" style="color:var(--text-2);font-size:12.5px;text-decoration:none;font-weight:500;">← Back to Sign In</a>
           </div>
