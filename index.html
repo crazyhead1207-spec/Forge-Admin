@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="faujii-api-origin" content="https://faujii.vercel.app" />
+  <meta name="faujii-api-origin" content="https://www.faujii.com" />
   <title>Faujii Admin — System Management Console</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <meta name="description" content="Faujii Admin Dashboard — Manage trainees, monitor compliance, handle support tickets and dispatch announcements." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -17,7 +19,10 @@
   <div id="login-screen" class="login-screen">
     <div class="login-card">
       <div class="login-logo">
-        <span class="logo-text">FAUJII<span class="accent-dot">.</span></span>
+        <svg width="52" height="48" viewBox="0 0 100 92" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M33,4 L97,46 L33,88 L48,66 L69,46 L48,26 Z" fill="var(--accent)" />
+          <polygon points="4,16 4,76 44,46" fill="white" />
+        </svg>
         <span class="logo-sub">ADMIN CONSOLE</span>
       </div>
       <div class="login-form-wrap">
@@ -67,7 +72,10 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
-        <span class="logo-text">FAUJII<span class="accent-dot">.</span></span>
+        <svg width="24" height="22" viewBox="0 0 100 92" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M33,4 L97,46 L33,88 L48,66 L69,46 L48,26 Z" fill="var(--accent)" />
+          <polygon points="4,16 4,76 44,46" fill="white" />
+        </svg>
         <span class="logo-badge">ADMIN</span>
       </div>
 
@@ -109,6 +117,10 @@
         <a class="nav-item" data-tab="announce" onclick="switchTab('announce')">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>
           <span>Announce</span>
+        </a>
+        <a class="nav-item" data-tab="videos" onclick="switchTab('videos')">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          <span>Ex. Videos</span>
         </a>
         <a class="nav-item" data-tab="settings" onclick="switchTab('settings')">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -225,6 +237,7 @@
                     <th>Level</th>
                     <th>Streak</th>
                     <th>Status</th>
+                    <th>Alarm QR</th>
                     <th>Joined</th>
                     <th>Action</th>
                   </tr>
@@ -565,6 +578,55 @@
             <div id="announce-history" class="announce-history">
               <div class="empty-state">No announcements yet.</div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel: Exercise Videos -->
+      <section class="tab-panel" id="panel-videos">
+        <div id="videos-setup-warning" class="staged-banner hidden" style="border-color:#FF9C38">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+          <span>Exercise videos table not found. Run <strong>forge/db/exercise_videos_migration.sql</strong> in your Supabase SQL Editor, then refresh this page.</span>
+        </div>
+
+        <div class="grid-2col">
+          <!-- LEFT: uploaded videos list -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Uploaded Tutorial Videos</h3>
+              <span class="card-badge" id="videos-count">0</span>
+            </div>
+            <p style="color:var(--text-3);font-size:12px;margin:0 0 12px">
+              A video uploaded here shows up automatically on that exercise's detail screen in the app —
+              matched by exercise name, no app update needed.
+            </p>
+            <div class="logs-list" id="videos-list">
+              <div class="empty-state">Loading videos…</div>
+            </div>
+          </div>
+
+          <!-- RIGHT: upload form -->
+          <div class="card">
+            <div class="card-header"><h3 class="card-title" id="video-form-title">Upload Tutorial Video</h3></div>
+            <form id="video-form" onsubmit="handleVideoUpload(event)" style="display:flex;flex-direction:column;gap:12px">
+              <div class="field-group">
+                <label class="field-label">Exercise Name</label>
+                <input id="video-exercise-name" class="field-input" placeholder="e.g. Dumbbell Bench Press" list="exercise-name-suggestions" required />
+                <datalist id="exercise-name-suggestions"></datalist>
+              </div>
+              <div class="field-group">
+                <label class="field-label">Video File</label>
+                <input id="video-file" type="file" accept="video/*" class="field-input" required />
+              </div>
+              <div id="video-upload-msg" class="announce-success hidden"></div>
+              <div style="display:flex;gap:10px">
+                <button type="submit" class="btn-primary" id="video-upload-btn">
+                  <span id="video-upload-btn-text">Upload Video</span>
+                  <div id="video-upload-spinner" class="btn-spinner hidden"></div>
+                </button>
+                <button type="button" id="video-cancel-edit" class="tbl-btn hidden" onclick="resetVideoForm()">Cancel</button>
+              </div>
+            </form>
           </div>
         </div>
       </section>

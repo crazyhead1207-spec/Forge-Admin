@@ -2,7 +2,7 @@
 const SUPABASE_URL  = 'https://fbaiyziavefufdbtaabo.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZiYWl5emlhdmVmdWZkYnRhYWJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzODQ2MTksImV4cCI6MjA5NTk2MDYxOX0.tdIb4-XC5fPLug8UFz-0lkZDUVejMyIgn5I1CRF76-A';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-const ADMIN_API_ORIGIN = document.querySelector('meta[name="faujii-api-origin"]')?.content?.replace(/\/$/, '') || 'https://faujii.vercel.app';
+const ADMIN_API_ORIGIN = document.querySelector('meta[name="faujii-api-origin"]')?.content?.replace(/\/$/, '') || 'https://www.faujii.com';
 
 // ── App State ────────────────────────────────────────────────────────────────
 let allUsers = [];
@@ -11,6 +11,7 @@ let allFeedback = [];
 let allAnnouncements = [];
 let allPlans = [];        // dynamic subscription plans
 let allFeatures = [];     // feature catalogue
+let allExerciseVideos = []; // exercise tutorial videos
 let editingPlanId = null; // plan currently being edited (null = creating new)
 let selectedUserId = null;
 let ticketFilter = 'all';
@@ -199,6 +200,17 @@ async function startAdminSession(session) {
   loadAllData();
 }
 
+// Detect a password-recovery link synchronously, before Supabase's internal
+// session init consumes/strips the URL hash. getSession() awaits that same
+// init, so checking the hash inside its .then() runs too late (the hash is
+// already gone by then), which was silently dropping straight into the
+// normal dashboard instead of showing the recovery form.
+if ((window.location.hash || '').includes('type=recovery')) {
+  isRecoverySession = true;
+  showLogin();
+  setLoginScreenMode('recovery');
+}
+
 sb.auth.onAuthStateChange((event, session) => {
   if (event === 'PASSWORD_RECOVERY') {
     isRecoverySession = true;
@@ -210,12 +222,7 @@ sb.auth.onAuthStateChange((event, session) => {
 });
 
 sb.auth.getSession().then(({ data: { session } }) => {
-  const hash = window.location.hash || '';
-  if (hash.includes('type=recovery') || hash.includes('recovery')) {
-    isRecoverySession = true;
-    showLogin();
-    setLoginScreenMode('recovery');
-  } else {
+  if (!isRecoverySession) {
     startAdminSession(session);
   }
 });
@@ -387,6 +394,7 @@ const TAB_TITLES = {
   support: 'Support Tickets',
   feedback: 'Ratings & Feedback',
   announce: 'Announcements',
+  videos: 'Exercise Videos',
   settings: 'Admin Settings',
 };
 
@@ -454,6 +462,7 @@ function switchTab(tab) {
   if (panel) { panel.classList.add('active'); panel.classList.add('anim-in'); }
   document.getElementById('page-title').textContent = TAB_TITLES[tab] || tab;
   if (tab === 'settings') loadSettings();
+  if (tab === 'videos') loadExerciseVideos();
 }
 
 // ── Admin Settings ──────────────────────────────────────────────────────────────
@@ -517,6 +526,7 @@ async function loadAllData() {
     loadSubscriptionMode(),
     loadRevenue(),
     loadCompliance(),
+    loadExerciseVideos(),
   ]);
 }
 
@@ -1218,7 +1228,7 @@ function applyFilters() {
     if (statF === 'active' && u.isSuspended) return false;
     if (statF === 'suspended' && !u.isSuspended) return false;
     if (statF === 'admin' && !u.isAdmin) return false;
-    if (search && !`${u.name} ${u.email || ''} ${u.goal}`.toLowerCase().includes(search)) return false;
+    if (search && !`${u.name} ${u.email || ''} ${u.goal} ${u.phone || ''} ${u.qrCodeValue || ''}`.toLowerCase().includes(search)) return false;
     return true;
   });
 
@@ -1239,7 +1249,7 @@ const CHIP_COLORS = ['#CDFF3F','#7AD7FF','#3FCEA4','#FF9C38','#C084FC','#FB7185'
 function renderUsersTable(users) {
   const tbody = document.getElementById('users-tbody');
   if (!users.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No trainees match the selected filters.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No trainees match the selected filters.</td></tr>`;
     return;
   }
 
@@ -1265,6 +1275,13 @@ function renderUsersTable(users) {
           ? '<span class="pill pill-red">Suspended</span>'
           : '<span class="pill pill-green">Active</span>'}
       </td>
+      <td>
+        ${u.qrCodeValue
+          ? (u.qrStatus === 'active'
+              ? '<span class="pill pill-green">QR Active</span>'
+              : '<span class="pill pill-red">QR Inactive</span>')
+          : '<span style="color:var(--text-3);font-size:11px">—</span>'}
+      </td>
       <td style="color:var(--text-2)">${formatDate(u.createdAt)}</td>
       <td>
         <button class="tbl-btn" onclick="event.stopPropagation();viewUserDetail('${u.id}')">View</button>
@@ -1284,6 +1301,7 @@ async function selectUser(id) {
   const content = document.getElementById('user-detail-content');
   content.classList.remove('hidden');
   content.innerHTML = buildUserDetail(user, false);
+  renderUserQr(user, 'det');
 
   // Load activity logs
   loadUserLogs(user.id);
@@ -1296,7 +1314,18 @@ async function viewUserDetail(id) {
   document.getElementById('drawer-name').textContent = user.name;
   document.getElementById('drawer-body').innerHTML = buildUserDetail(user, true);
   drawer.classList.remove('hidden');
+  renderUserQr(user, 'drw');
   loadUserLogs(user.id, true);
+}
+
+// Draw the user's wake-up alarm QR into the detail panel (qrcode CDN lib).
+function renderUserQr(user, prefix) {
+  if (!user.qrCodeValue || typeof QRCode === 'undefined') return;
+  const img = document.getElementById(`${prefix}-qrimg-${user.id}`);
+  if (!img) return;
+  QRCode.toDataURL(user.qrCodeValue, { margin: 1, width: 220 }, (err, url) => {
+    if (!err && url) img.src = url;
+  });
 }
 
 function buildUserDetail(user, isDrawer) {
@@ -1336,6 +1365,24 @@ function buildUserDetail(user, isDrawer) {
         <div class="detail-row"><span class="detail-row-label">Streak</span><span class="detail-row-val" style="color:var(--accent)">${user.streak} days 🔥</span></div>
         <div class="detail-row"><span class="detail-row-label">Location</span><span class="detail-row-val">${user.city}, ${user.state}</span></div>
       </div>
+    </div>
+
+    <div>
+      <div class="detail-section-title">Wake-Up Alarm QR</div>
+      ${user.qrCodeValue ? `
+        <div style="display:flex;gap:14px;align-items:flex-start">
+          <img id="${prefix}-qrimg-${user.id}" alt="User QR code" style="width:110px;height:110px;border-radius:10px;background:#fff;padding:6px;flex-shrink:0" />
+          <div class="detail-rows" style="flex:1">
+            <div class="detail-row"><span class="detail-row-label">User</span><span class="detail-row-val">${user.name}</span></div>
+            <div class="detail-row"><span class="detail-row-label">Mobile</span><span class="detail-row-val">${user.phone || '—'}</span></div>
+            <div class="detail-row"><span class="detail-row-label">QR ID</span><span class="detail-row-val" style="font-size:10px;word-break:break-all">${user.qrCodeValue}</span></div>
+            <div class="detail-row"><span class="detail-row-label">QR Status</span><span class="detail-row-val">${user.qrStatus === 'active' ? '<span class="pill pill-green">Active</span>' : '<span class="pill pill-red">Inactive</span>'}</span></div>
+            <div class="detail-row"><span class="detail-row-label">Alarms set</span><span class="detail-row-val">${user.alarmCount}</span></div>
+            <div class="detail-row"><span class="detail-row-label">QR created</span><span class="detail-row-val">${user.qrCreatedAt ? formatDate(user.qrCreatedAt) : '—'}</span></div>
+            <div class="detail-row"><span class="detail-row-label">Registered</span><span class="detail-row-val">${formatDate(user.createdAt)}</span></div>
+          </div>
+        </div>`
+      : '<div class="empty-state" style="padding:8px">No wake-up alarm QR yet — this user has not created an alarm.</div>'}
     </div>
 
     <div>
@@ -1761,6 +1808,141 @@ async function handleAnnouncement(e) {
     setTimeout(() => success.classList.add('hidden'), 4000);
     loadAnnouncements();
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// EXERCISE TUTORIAL VIDEOS
+// Reads & writes: exercise_videos table + "exercise-videos" storage bucket.
+// The app looks a video up by normalized exercise name (see
+// normalizeExerciseKey below, mirrored in forge/src/supabase.js), so a video
+// uploaded here for "Dumbbell Bench Press" shows up automatically on that
+// exercise's detail screen with no app code change.
+// ════════════════════════════════════════════════════════════════════════
+
+// A seed list purely for the autocomplete suggestions on the exercise-name
+// field — it does not restrict what the admin can type. Any name typed here
+// just needs to match (after normalization) the name the app renders.
+const EXERCISE_NAME_SUGGESTIONS = [
+  'Barbell Bench Press', 'Dumbbell Bench Press', 'Incline Dumbbell Press', 'Cable Fly', 'Dumbbell Fly',
+  'Weighted Dips', 'Pec Deck', 'Push-up Burnout', 'Overhead Press', 'Lateral Raise', 'Front Raise',
+  'Face Pull', 'Arnold Press', 'Rear Delt Fly', 'Deadlift', 'Pull-ups', 'Barbell Row', 'Cable Row',
+  'Lat Pulldown', 'Single-arm DB Row', 'Barbell Curl', 'Incline DB Curl', 'Hammer Curl',
+  'Concentration Curl', 'Tricep Pushdown', 'Skull Crusher', 'Overhead Tricep Ext.', 'Close-grip Bench',
+  'Barbell Squat', 'Leg Press', 'DB Lunges', 'Leg Extension', 'Romanian Deadlift', 'Leg Curl',
+  'Calf Raise', 'Hip Thrust', 'Handstand Pushup', 'L-pullup', 'Nordic Hamstring Curl',
+  'Full Planche Pushup', 'Sissy Squat', 'Hanging Leg Raise', 'Dumbbell Burpee',
+];
+
+(function populateExerciseNameSuggestions() {
+  const el = document.getElementById('exercise-name-suggestions');
+  if (!el) return;
+  el.innerHTML = EXERCISE_NAME_SUGGESTIONS.map(n => `<option value="${n}"></option>`).join('');
+})();
+
+// Same normalization the app uses to match a video to the exercise it's
+// currently showing — must stay identical to normalizeExerciseKey in
+// forge/src/supabase.js.
+function normalizeExerciseKey(name) {
+  return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+async function loadExerciseVideos() {
+  const { data, error } = await sb.from('exercise_videos').select('*').order('exercise_name', { ascending: true });
+  const warn = document.getElementById('videos-setup-warning');
+  if (error) {
+    if (warn) warn.classList.remove('hidden');
+    return;
+  }
+  if (warn) warn.classList.add('hidden');
+  allExerciseVideos = data || [];
+  renderExerciseVideos();
+}
+
+function renderExerciseVideos() {
+  const countEl = document.getElementById('videos-count');
+  if (countEl) countEl.textContent = allExerciseVideos.length;
+  const el = document.getElementById('videos-list');
+  if (!el) return;
+  if (!allExerciseVideos.length) {
+    el.innerHTML = '<div class="empty-state">No videos uploaded yet. Add one on the right →</div>';
+    return;
+  }
+  el.innerHTML = allExerciseVideos.map(v => `
+    <div class="log-item">
+      <span class="log-name">${escapeHtml(v.exercise_name)}</span>
+      <span style="display:flex;gap:6px;flex-shrink:0">
+        <a class="tbl-btn" href="${v.video_url}" target="_blank" rel="noopener">▶ Preview</a>
+        <button class="tbl-btn" style="color:var(--red)" onclick="deleteExerciseVideo('${v.id}', '${(v.storage_path || '').replace(/'/g, "\\'")}')">Delete</button>
+      </span>
+    </div>
+  `).join('');
+}
+
+async function handleVideoUpload(e) {
+  e.preventDefault();
+  const nameInput = document.getElementById('video-exercise-name');
+  const fileInput = document.getElementById('video-file');
+  const name = nameInput.value.trim();
+  const file = fileInput.files[0];
+  const key = normalizeExerciseKey(name);
+  if (!name || !file || !key) return;
+
+  const btn     = document.getElementById('video-upload-btn');
+  const spinner = document.getElementById('video-upload-spinner');
+  const btnText = document.getElementById('video-upload-btn-text');
+  const msg     = document.getElementById('video-upload-msg');
+  msg.classList.add('hidden');
+  btn.disabled = true;
+  spinner.classList.remove('hidden');
+  btnText.textContent = 'Uploading...';
+
+  try {
+    // Replacing an existing video for this exercise? Remove the old file so
+    // storage doesn't accumulate orphaned uploads.
+    const existing = allExerciseVideos.find(v => v.exercise_key === key);
+    if (existing?.storage_path) {
+      await sb.storage.from('exercise-videos').remove([existing.storage_path]);
+    }
+
+    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
+    const path = `${key}-${Date.now()}.${ext}`;
+    const { error: upErr } = await sb.storage.from('exercise-videos').upload(path, file, { upsert: false, contentType: file.type });
+    if (upErr) throw upErr;
+
+    const { data: pub } = sb.storage.from('exercise-videos').getPublicUrl(path);
+    const { error: dbErr } = await sb.from('exercise_videos').upsert({
+      exercise_key: key,
+      exercise_name: name,
+      video_url: pub.publicUrl,
+      storage_path: path,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'exercise_key' });
+    if (dbErr) throw dbErr;
+
+    msg.textContent = `Video saved for "${name}". ✓`;
+    msg.classList.remove('hidden');
+    resetVideoForm();
+    loadExerciseVideos();
+  } catch (err) {
+    await showCustomAlert('Upload Failed', err.message || String(err));
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('hidden');
+    btnText.textContent = 'Upload Video';
+  }
+}
+
+function resetVideoForm() {
+  document.getElementById('video-exercise-name').value = '';
+  document.getElementById('video-file').value = '';
+}
+
+async function deleteExerciseVideo(id, storagePath) {
+  if (!(await showCustomConfirm('Delete Video', 'Remove this tutorial video? It will disappear from the app immediately.', true, 'Delete'))) return;
+  if (storagePath) await sb.storage.from('exercise-videos').remove([storagePath]);
+  const { error } = await sb.from('exercise_videos').delete().eq('id', id);
+  if (error) { await showCustomAlert('Error', 'Could not delete: ' + error.message); return; }
+  loadExerciseVideos();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
