@@ -435,6 +435,24 @@ const FEATURE_LABELS = {
   community_like: 'Community Post Liked',
   community_unlike: 'Community Post Unliked',
   community_share_invite: 'Community Invite Shared',
+  // Wake-Up Alarm
+  alarm_create: 'Alarm Created',
+  alarm_edit: 'Alarm Edited',
+  alarm_delete: 'Alarm Deleted',
+  alarm_enable: 'Alarm Enabled',
+  alarm_disable: 'Alarm Disabled',
+  alarm_prefs_change: 'Alarm Settings Changed',
+  alarm_qr_view: 'Alarm QR Viewed',
+  alarm_qr_download: 'Alarm QR Downloaded',
+  alarm_ring: 'Alarm Rang',
+  alarm_steps_complete: 'Alarm Steps Completed',
+  alarm_scan_wrong: 'Alarm Wrong QR Scanned',
+  alarm_dismiss: 'Alarm Dismissed',
+  // Activation & monetisation
+  onboarding_complete: 'Onboarding Completed',
+  upgrade_gate_hit: 'Hit Locked Feature',
+  upgrade_cta_click: 'Upgrade CTA Clicked',
+  exercise_tutorial_open: 'Exercise Tutorial Opened',
 };
 const SCREEN_LABELS = {
   dashboard: 'Dashboard / Home',
