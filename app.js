@@ -1280,7 +1280,7 @@ function renderUsersTable(users) {
           ? (u.qrStatus === 'active'
               ? '<span class="pill pill-green">QR Active</span>'
               : '<span class="pill pill-red">QR Inactive</span>')
-          : '<span style="color:var(--text-3);font-size:11px">—</span>'}
+          : '<span style="color:var(--text-3);font-size:11px">Not generated</span>'}
       </td>
       <td style="color:var(--text-2)">${formatDate(u.createdAt)}</td>
       <td>
@@ -1318,13 +1318,63 @@ async function viewUserDetail(id) {
   loadUserLogs(user.id, true);
 }
 
-// Draw the user's wake-up alarm QR into the detail panel (qrcode CDN lib).
+// Draw the user's wake-up alarm QR into the detail panel (qrcode CDN lib),
+// branded with the Faujii chevron exactly like the sticker the user prints.
+// Error-correction level H keeps it scannable with the centre badge on top —
+// see forge/src/qrBrand.js, which this mirrors.
 function renderUserQr(user, prefix) {
   if (!user.qrCodeValue || typeof QRCode === 'undefined') return;
   const img = document.getElementById(`${prefix}-qrimg-${user.id}`);
   if (!img) return;
-  QRCode.toDataURL(user.qrCodeValue, { margin: 1, width: 220 }, (err, url) => {
-    if (!err && url) img.src = url;
+  const SIZE = 240, DARK = '#0C0C0C', LIGHT = '#F4F5F0', ACCENT = '#CDFF3F';
+  QRCode.toDataURL(user.qrCodeValue, {
+    errorCorrectionLevel: 'H', margin: 1, width: SIZE,
+    color: { dark: DARK, light: LIGHT },
+  }, (err, url) => {
+    if (err || !url) return;
+    const base = new Image();
+    base.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = SIZE; c.height = SIZE;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(base, 0, 0, SIZE, SIZE);
+
+      const badge = Math.round(SIZE * 0.24);
+      const bx = Math.round((SIZE - badge) / 2);
+      const rr = (x, y, w, h, r) => {
+        ctx.beginPath();
+        if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      };
+      ctx.fillStyle = LIGHT;
+      rr(bx - badge * 0.09, bx - badge * 0.09, badge * 1.18, badge * 1.18, badge * 0.30); ctx.fill();
+      ctx.fillStyle = DARK;
+      rr(bx, bx, badge, badge, badge * 0.26); ctx.fill();
+
+      // favicon.svg mark, viewBox 0 0 100 92
+      const mark = badge * 0.6, s = mark / 100;
+      ctx.save();
+      ctx.translate(bx + (badge - mark) / 2, bx + (badge - mark) / 2);
+      ctx.scale(s, s);
+      ctx.fillStyle = ACCENT;
+      ctx.beginPath();
+      ctx.moveTo(33, 4); ctx.lineTo(97, 46); ctx.lineTo(33, 88);
+      ctx.lineTo(48, 66); ctx.lineTo(69, 46); ctx.lineTo(48, 26);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.moveTo(4, 16); ctx.lineTo(4, 76); ctx.lineTo(44, 46);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+
+      img.src = c.toDataURL('image/png');
+    };
+    base.src = url;
   });
 }
 
@@ -1382,7 +1432,7 @@ function buildUserDetail(user, isDrawer) {
             <div class="detail-row"><span class="detail-row-label">Registered</span><span class="detail-row-val">${formatDate(user.createdAt)}</span></div>
           </div>
         </div>`
-      : '<div class="empty-state" style="padding:8px">No wake-up alarm QR yet — this user has not created an alarm.</div>'}
+      : '<div class="empty-state" style="padding:8px">Not generated yet — this user has not set up the Wake-Up Alarm feature. Their permanent QR code is created the first time they do.</div>'}
     </div>
 
     <div>
