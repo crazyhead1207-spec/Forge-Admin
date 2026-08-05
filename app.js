@@ -781,7 +781,7 @@ async function loadAnalytics() {
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('Admin session expired.');
-    const response = await fetch(`${ADMIN_API_ORIGIN}/api/admin-analytics`, {
+    const response = await fetch(`${ADMIN_API_ORIGIN}/api/admin?resource=analytics`, {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
     const analytics = await response.json();
@@ -1216,7 +1216,7 @@ async function assignUserSubscription(userId, prefix) {
 async function loadUsers() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session?.access_token) { allUsers = []; return; }
-  const response = await fetch(`${ADMIN_API_ORIGIN}/api/admin-users`, {
+  const response = await fetch(`${ADMIN_API_ORIGIN}/api/admin?resource=users`, {
     headers: { Authorization: `Bearer ${session.access_token}` },
   });
   const data = await response.json().catch(() => ({}));
@@ -1586,7 +1586,7 @@ async function loadUserAnalytics(userId, prefix) {
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('Admin session expired.');
-    const response = await fetch(`${ADMIN_API_ORIGIN}/api/admin-user-analytics?userId=${encodeURIComponent(userId)}`, {
+    const response = await fetch(`${ADMIN_API_ORIGIN}/api/admin?resource=user-analytics&userId=${encodeURIComponent(userId)}`, {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
     const analytics = await response.json();
