@@ -387,6 +387,7 @@ function showApp(user) {
 const TAB_TITLES = {
   overview: 'Overview',
   users: 'Trainees',
+  waitlist: 'Waitlist',
   analytics: 'Feature Analytics',
   plans: 'Subscription Plans',
   compliance: 'Compliance',
@@ -538,6 +539,7 @@ async function loadAllData() {
     loadOverviewStats(),
     loadTickets(),
     loadFeedback(),
+    loadWaitlist(),
     loadAnnouncements(),
     loadAnalytics(),
     loadPlansAndFeatures(),
@@ -1821,6 +1823,35 @@ function renderFeedback() {
       ${f.comments ? `<div class="feedback-comment">"${f.comments}"</div>` : ''}
       <div class="feedback-date">${formatDate(f.created_at)}</div>
     </div>
+  `).join('');
+}
+
+// ── Waitlist ───────────────────────────────────────────────────────────────────
+let allWaitlist = [];
+async function loadWaitlist() {
+  const { data, error } = await sb.from('waitlist_signups').select('*').order('created_at', { ascending: false });
+  allWaitlist = (!error && data) ? data : [];
+
+  const badge = document.getElementById('waitlist-badge');
+  badge.textContent = allWaitlist.length;
+  badge.classList.add('show');
+
+  renderWaitlistTable(allWaitlist);
+}
+
+function renderWaitlistTable(rows) {
+  const tbody = document.getElementById('waitlist-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-state">No signups yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td style="font-weight:700;color:var(--text-1)">${r.name}</td>
+      <td style="color:var(--text-2)">${r.email}</td>
+      <td style="color:var(--text-2)">${r.reason || '—'}</td>
+      <td style="color:var(--text-2)">${formatDate(r.created_at)}</td>
+    </tr>
   `).join('');
 }
 
