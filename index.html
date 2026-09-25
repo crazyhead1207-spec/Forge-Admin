@@ -265,10 +265,22 @@
 
       <!-- Panel: Waitlist -->
       <section class="tab-panel" id="panel-waitlist">
+        <div class="wl-toolbar">
+          <div class="filters-bar" id="wl-filters">
+            <button class="filter-tag active" data-wl="pending" onclick="setWaitlistFilter('pending')">Pending <span id="wl-count-pending">0</span></button>
+            <button class="filter-tag" data-wl="approved" onclick="setWaitlistFilter('approved')">Approved <span id="wl-count-approved">0</span></button>
+            <button class="filter-tag" data-wl="all" onclick="setWaitlistFilter('all')">All <span id="wl-count-all">0</span></button>
+          </div>
+          <input class="wl-search" id="wl-search" type="search" placeholder="Search name or email" oninput="renderWaitlist()" />
+          <div class="wl-actions">
+            <button class="tbl-btn" onclick="grantEmailAccess()">Approve an email…</button>
+            <button class="btn-primary wl-accept-all" id="wl-accept-all" onclick="acceptAllWaitlist()">Accept all pending (0)</button>
+          </div>
+        </div>
         <div id="waitlist-table-wrap" class="table-wrap">
           <table class="data-table" id="waitlist-table">
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Training for</th><th>Requested</th></tr>
+              <tr><th>Name</th><th>Email</th><th>Training for</th><th>Requested</th><th>Status</th><th></th></tr>
             </thead>
             <tbody id="waitlist-tbody"></tbody>
           </table>

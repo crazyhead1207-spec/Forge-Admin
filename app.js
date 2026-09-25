@@ -1827,32 +1827,115 @@ function renderFeedback() {
 }
 
 // ── Waitlist ───────────────────────────────────────────────────────────────────
+// Approvals are done through SECURITY DEFINER RPCs (admin_approve_waitlist /
+// admin_grant_access / admin_revoke_access) that re-check is_admin() on the
+// server, so the browser never needs a service key. Approved emails are what
+// gates the app itself (see forge db/access_approval_migration.sql).
 let allWaitlist = [];
+let waitlistFilter = 'pending';
+
 async function loadWaitlist() {
   const { data, error } = await sb.from('waitlist_signups').select('*').order('created_at', { ascending: false });
   allWaitlist = (!error && data) ? data : [];
-
-  const badge = document.getElementById('waitlist-badge');
-  badge.textContent = allWaitlist.length;
-  badge.classList.add('show');
-
-  renderWaitlistTable(allWaitlist);
+  renderWaitlist();
 }
 
-function renderWaitlistTable(rows) {
+function waitlistPending() { return allWaitlist.filter(r => (r.status || 'pending') === 'pending'); }
+function waitlistApproved() { return allWaitlist.filter(r => r.status === 'approved'); }
+
+function setWaitlistFilter(f) {
+  waitlistFilter = f;
+  document.querySelectorAll('#wl-filters .filter-tag').forEach(b => b.classList.toggle('active', b.dataset.wl === f));
+  renderWaitlist();
+}
+
+function renderWaitlist() {
+  const pending = waitlistPending();
+  const approved = waitlistApproved();
+
+  const badge = document.getElementById('waitlist-badge');
+  badge.textContent = pending.length;
+  badge.classList.toggle('show', pending.length > 0);
+  document.getElementById('wl-count-pending').textContent = pending.length;
+  document.getElementById('wl-count-approved').textContent = approved.length;
+  document.getElementById('wl-count-all').textContent = allWaitlist.length;
+
+  const acceptAll = document.getElementById('wl-accept-all');
+  acceptAll.textContent = `Accept all pending (${pending.length})`;
+  acceptAll.disabled = pending.length === 0;
+
+  const q = (document.getElementById('wl-search').value || '').trim().toLowerCase();
+  let rows = waitlistFilter === 'pending' ? pending : waitlistFilter === 'approved' ? approved : allWaitlist;
+  if (q) rows = rows.filter(r => `${r.name} ${r.email}`.toLowerCase().includes(q));
+
   const tbody = document.getElementById('waitlist-tbody');
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="4" class="empty-state">No signups yet.</td></tr>`;
+    const msg = q ? 'No matches.' : waitlistFilter === 'pending' ? 'No pending requests.' : waitlistFilter === 'approved' ? 'Nobody approved yet.' : 'No signups yet.';
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${msg}</td></tr>`;
     return;
   }
-  tbody.innerHTML = rows.map(r => `
+  tbody.innerHTML = rows.map(r => {
+    const isApproved = r.status === 'approved';
+    const action = isApproved
+      ? `<button class="tbl-btn red" onclick="revokeWaitlist('${escapeHtml(r.email)}')">Revoke</button>`
+      : `<button class="tbl-btn" onclick="acceptWaitlist('${escapeHtml(r.id)}')">Accept</button>`;
+    return `
     <tr>
-      <td style="font-weight:700;color:var(--text-1)">${r.name}</td>
-      <td style="color:var(--text-2)">${r.email}</td>
-      <td style="color:var(--text-2)">${r.reason || '—'}</td>
+      <td style="font-weight:700;color:var(--text-1)">${escapeHtml(r.name)}</td>
+      <td style="color:var(--text-2)">${escapeHtml(r.email)}</td>
+      <td style="color:var(--text-2)">${escapeHtml(r.reason) || '—'}</td>
       <td style="color:var(--text-2)">${formatDate(r.created_at)}</td>
-    </tr>
-  `).join('');
+      <td><span class="pill ${isApproved ? 'pill-green' : 'pill-orange'}">${isApproved ? 'Approved' : 'Pending'}</span></td>
+      <td style="text-align:right">${action}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function acceptWaitlist(id) {
+  const { error } = await sb.rpc('admin_approve_waitlist', { p_ids: [id] });
+  if (error) { await showCustomAlert('Error', 'Could not approve: ' + error.message); return; }
+  await loadWaitlist();
+}
+
+async function acceptAllWaitlist() {
+  // Approve exactly the rows on screen, not "whatever is pending right now":
+  // someone who signed up after this page loaded has not been reviewed.
+  const ids = waitlistPending().map(r => r.id);
+  if (!ids.length) return;
+  const ok = await showCustomConfirm(
+    'Accept all pending?',
+    `This approves all ${ids.length} pending ${ids.length === 1 ? 'person' : 'people'}.\nThey will be able to sign up and use the app with the email they requested with.`,
+    false,
+    `Accept ${ids.length}`
+  );
+  if (!ok) return;
+  const { data, error } = await sb.rpc('admin_approve_waitlist', { p_ids: ids });
+  if (error) { await showCustomAlert('Error', 'Could not approve: ' + error.message); return; }
+  await loadWaitlist();
+  await showCustomAlert('Done', `${data ?? ids.length} approved. Let them know they can now sign up with the same email.`);
+}
+
+async function revokeWaitlist(email) {
+  const ok = await showCustomConfirm(
+    'Revoke access?',
+    `${email} will lose access to the app immediately (their account and data are kept).`,
+    true,
+    'Revoke'
+  );
+  if (!ok) return;
+  const { error } = await sb.rpc('admin_revoke_access', { p_email: email });
+  if (error) { await showCustomAlert('Error', 'Could not revoke: ' + error.message); return; }
+  await loadWaitlist();
+}
+
+// Approve someone who is not on the waitlist (e.g. a Play Store reviewer).
+async function grantEmailAccess() {
+  const email = (window.prompt('Email address to approve:') || '').trim();
+  if (!email) return;
+  const { error } = await sb.rpc('admin_grant_access', { p_email: email });
+  if (error) { await showCustomAlert('Error', 'Could not approve: ' + error.message); return; }
+  await showCustomAlert('Approved', `${email} can now sign up and use the app.`);
+  await loadWaitlist();
 }
 
 // ── Announcements ─────────────────────────────────────────────────────────────
